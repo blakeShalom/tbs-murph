@@ -3,6 +3,8 @@ export const MAP_GRID_SIZE = 10;
 export const MAP_TILE_SIZE = 64;
 export const COMBAT_GRID_SIZE = 8;
 export const COMBAT_TILE_SIZE = BOARD_SIZE / COMBAT_GRID_SIZE;
+export const DEFAULT_MAP_MP = 3;
+export const DEFAULT_COMBAT_MP = 2;
 
 export const RACES = {
   PLAYER: "Dawnforged",

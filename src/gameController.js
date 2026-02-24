@@ -8,6 +8,7 @@ import {
   startCombat
 } from "./systems/combat.js";
 import { moveEnemyOnMap, moveMapPlayer } from "./systems/map.js";
+import { getCombatTerrainRule, getMapTerrainRule } from "./systems/terrain.js";
 
 export function createGameController({ ui, renderer, randomFn } = {}) {
   const rng = createRng(randomFn);
@@ -19,6 +20,9 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
 
   function syncUi() {
     ui.setMode(state.mode === "map" ? "Map" : "Combat");
+    ui.setMapMp?.(`${state.units.player.currentMapMp}/${state.units.player.maxMapMp}`);
+    ui.setCombatMp?.(`${state.units.player.currentCombatMp}/${state.units.player.maxCombatMp}`);
+
     const attackDisabled =
       state.mode !== "combat" ||
       state.combatTurn !== "player" ||
@@ -31,7 +35,7 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
 
   function reset() {
     state = createInitialState();
-    status("Map View: Use arrow keys to move Dawnforged. Overlap the enemy to trigger combat.");
+    status("Map View: Use arrow keys to move Dawnforged. Terrain costs MP and water is impassable.");
     syncUi();
   }
 
@@ -68,6 +72,7 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
 
     if (!state.gameOver) {
       state.combatTurn = "enemy";
+      state.units.enemy.currentCombatMp = state.units.enemy.maxCombatMp;
       syncUi();
       enemyCombatTurn();
     }
@@ -79,6 +84,29 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
     }
 
     const action = moveEnemyInCombat(state);
+
+    if (action.action === "move") {
+      state.combatTurn = "player";
+      state.units.player.currentCombatMp = state.units.player.maxCombatMp;
+      status(`Combat View: Ironclad repositions to (${action.pos.x}, ${action.pos.y}). Your combat turn.`);
+      syncUi();
+      return;
+    }
+
+    if (action.action === "move-then-attack") {
+      status(`Combat View: Ironclad repositions to (${action.pos.x}, ${action.pos.y}) and attacks...`);
+      syncUi();
+      const result = resolveCombatAttack(state, "enemy", rng);
+      handleCombatResolution(result);
+      if (!state.gameOver) {
+        state.combatTurn = "player";
+        state.units.player.currentCombatMp = state.units.player.maxCombatMp;
+        status("Combat View: Your combat turn.");
+        syncUi();
+      }
+      return;
+    }
+
     if (action.action === "attack") {
       status("Combat View: Ironclad attacks...");
       syncUi();
@@ -86,17 +114,17 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
       handleCombatResolution(result);
       if (!state.gameOver) {
         state.combatTurn = "player";
+        state.units.player.currentCombatMp = state.units.player.maxCombatMp;
         status("Combat View: Your combat turn.");
         syncUi();
       }
       return;
     }
 
-    if (action.action === "move") {
-      state.combatTurn = "player";
-      status(`Combat View: Ironclad repositions to (${action.pos.x}, ${action.pos.y}). Your combat turn.`);
-      syncUi();
-    }
+    state.combatTurn = "player";
+    state.units.player.currentCombatMp = state.units.player.maxCombatMp;
+    status("Combat View: Ironclad holds due to terrain/MP limits. Your combat turn.");
+    syncUi();
   }
 
   function move(direction) {
@@ -105,15 +133,28 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
       if (!result.ok) {
         if (result.reason === "out-of-bounds") {
           status("Invalid move. Stay inside the map.");
-          syncUi();
         }
+        if (result.reason === "impassable") {
+          const terrain = getMapTerrainRule(result.terrain);
+          status(`Map View: ${terrain.label} is impassable.`);
+        }
+        if (result.reason === "insufficient-mp") {
+          const terrain = getMapTerrainRule(result.terrain);
+          status(`Map View: Need ${result.cost} MP for ${terrain.label}. Remaining MP: ${result.remainingMp}.`);
+        }
+        syncUi();
         return;
       }
 
-      status(`Map View: Dawnforged moved to (${result.pos.x}, ${result.pos.y}).`);
+      const terrain = getMapTerrainRule(result.terrain);
+      status(`Map View: Dawnforged moved to (${result.pos.x}, ${result.pos.y}) on ${terrain.label} (${result.cost} MP). Remaining MP: ${result.remainingMp}.`);
+
       if (result.overlap) {
         startCombatFor("player");
         return;
+      }
+      if (result.remainingMp <= 0) {
+        status(`Map View: Dawnforged moved to (${result.pos.x}, ${result.pos.y}) on ${terrain.label} (${result.cost} MP). Remaining MP: 0. No MP left, end your turn.`);
       }
       syncUi();
       return;
@@ -123,11 +164,20 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
     if (!result.ok) {
       if (result.reason === "out-of-bounds") status("Combat View: Invalid move.");
       if (result.reason === "occupied") status("Combat View: Occupied tile. Move adjacent, then attack.");
+      if (result.reason === "impassable") {
+        const terrain = getCombatTerrainRule(result.terrain);
+        status(`Combat View: ${terrain.label} is impassable.`);
+      }
+      if (result.reason === "insufficient-combat-mp") {
+        const terrain = getCombatTerrainRule(result.terrain);
+        status(`Combat View: Need ${result.cost} MP for ${terrain.label}. Remaining MP: ${result.remainingMp}.`);
+      }
       syncUi();
       return;
     }
 
-    status(`Combat View: Dawnforged repositions to (${result.pos.x}, ${result.pos.y}).`);
+    const terrain = getCombatTerrainRule(result.terrain);
+    status(`Combat View: Dawnforged repositions to (${result.pos.x}, ${result.pos.y}) on ${terrain.label} (${result.cost} MP). Remaining MP: ${result.remainingMp}.`);
     syncUi();
   }
 
@@ -137,6 +187,7 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
     if (state.mode === "combat") {
       if (state.combatTurn !== "player") return;
       state.combatTurn = "enemy";
+      state.units.enemy.currentCombatMp = state.units.enemy.maxCombatMp;
       status("Combat View: You ended your combat turn.");
       syncUi();
       enemyCombatTurn();
@@ -145,6 +196,7 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
 
     if (state.turn !== "player") return;
     state.turn = "enemy";
+    state.units.enemy.currentMapMp = state.units.enemy.maxMapMp;
     status("Map View: Ironclad is taking a map turn...");
     syncUi();
 
@@ -155,7 +207,13 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
     }
 
     state.turn = "player";
-    status(`Map View: Ironclad moved to (${state.units.enemy.x}, ${state.units.enemy.y}). Your map turn.`);
+    state.units.player.currentMapMp = state.units.player.maxMapMp;
+
+    if (result.ok && result.moved) {
+      status(`Map View: Ironclad moved to (${state.units.enemy.x}, ${state.units.enemy.y}). Your map turn.`);
+    } else {
+      status("Map View: Ironclad holds position due to terrain/MP limits. Your map turn.");
+    }
     syncUi();
   }
 
