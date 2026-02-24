@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TBS Prototype</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app">
+    <section class="hud">
+      <h1>4X Prototype: Turn-Based Skirmish</h1>
+      <div class="meta">
+        <p><strong>Race A:</strong> Dawnforged</p>
+        <p><strong>Race B:</strong> Ironclad</p>
+      </div>
+      <p><strong>View:</strong> <span id="modeLabel">Map</span></p>
+      <p id="status">Map View: Use arrow keys to move Dawnforged. Overlap the enemy to trigger combat.</p>
+      <button id="attackBtn">Attack</button>
+      <button id="endTurnBtn">End Turn</button>
+      <button id="resetBtn">Reset</button>
+      <p class="hint">Combat View is a tactical grid. Move adjacent to attack.</p>
+    </section>
+    <section class="board-wrap">
+      <canvas id="board" width="640" height="640" aria-label="Game board"></canvas>
+    </section>
+  </main>
+  <script type="module" src="./src/main.js"></script>
+</body>
+</html>
