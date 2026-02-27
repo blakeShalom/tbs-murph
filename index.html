@@ -8,22 +8,30 @@
 </head>
 <body>
   <main class="app">
-    <section class="hud">
+    <section id="setupScreen" class="setup-screen">
+      <h2>Choose Races</h2>
+      <label for="playerRaceSelect">Player Race</label>
+      <select id="playerRaceSelect"></select>
+      <label for="enemyRaceSelect">Computer Race</label>
+      <select id="enemyRaceSelect"></select>
+      <button id="startGameBtn">Start Game</button>
+    </section>
+    <section id="hudPanel" class="hud hidden-until-start">
       <h1>4X Prototype: Turn-Based Skirmish</h1>
       <div class="meta">
-        <p><strong>Race A:</strong> Dawnforged</p>
-        <p><strong>Race B:</strong> Ironclad</p>
+        <p><strong>Race A:</strong> <span id="raceALabel">-</span></p>
+        <p><strong>Race B:</strong> <span id="raceBLabel">-</span></p>
       </div>
       <p><strong>View:</strong> <span id="modeLabel">Map</span></p>
       <p><strong>Map MP:</strong> <span id="mapMpLabel">3/3</span></p>
       <p><strong>Combat MP:</strong> <span id="combatMpLabel">2/2</span></p>
-      <p id="status">Map View: Use arrow keys to move Dawnforged. Overlap the enemy to trigger combat.</p>
+      <p id="status">Map View: Use arrow keys to move your stack. Overlap the enemy to trigger combat.</p>
       <button id="attackBtn">Attack</button>
       <button id="endTurnBtn">End Turn</button>
       <button id="resetBtn">Reset</button>
-      <p class="hint">Fog of war: you only see 2 tiles around your stack; explored terrain stays revealed. Stacks show subscripts (Dₙ/Iₙ). Combat: A cycle, arrows move, Space/Attack to target, arrow toward enemy to confirm, Enter end turn.</p>
+      <p class="hint">Fog of war: you only see 2 tiles around your stack; explored terrain stays revealed. Stacks show race-token subscripts (for example Dₙ). Combat: A cycle, arrows move, Space/Attack to target, arrow toward enemy to confirm, Enter end turn.</p>
     </section>
-    <section class="board-wrap">
+    <section id="boardWrap" class="board-wrap hidden-until-start">
       <canvas id="board" width="640" height="640" aria-label="Game board"></canvas>
     </section>
   </main>

@@ -31,28 +31,75 @@ const SUBSCRIPT_DIGITS = {
   "9": "₉"
 };
 
+const RANDOM_RACE_ID = "random";
+const RACE_OPTIONS = [
+  { id: "dawnforged", name: "Dawnforged", token: "D", color: "#3b7a57" },
+  { id: "ironclad", name: "Ironclad", token: "I", color: "#7f2f2f" },
+  { id: "sylvan", name: "Sylvan", token: "S", color: "#2f6e49" },
+  { id: "emberkin", name: "Emberkin", token: "E", color: "#b35d2a" },
+  { id: "tideborn", name: "Tideborn", token: "T", color: "#2f5f8c" },
+  { id: "stoneguard", name: "Stoneguard", token: "G", color: "#5f655f" }
+];
+
 function boardSize() {
   return 640;
 }
 
 const board = document.getElementById("board");
 const ctx = board.getContext("2d");
+const setupScreenEl = document.getElementById("setupScreen");
+const playerRaceSelectEl = document.getElementById("playerRaceSelect");
+const enemyRaceSelectEl = document.getElementById("enemyRaceSelect");
+const startGameBtnEl = document.getElementById("startGameBtn");
+const hudPanelEl = document.getElementById("hudPanel");
+const boardWrapEl = document.getElementById("boardWrap");
 const statusEl = document.getElementById("status");
 const modeLabelEl = document.getElementById("modeLabel");
 const mapMpLabelEl = document.getElementById("mapMpLabel");
 const combatMpLabelEl = document.getElementById("combatMpLabel");
+const raceALabelEl = document.getElementById("raceALabel");
+const raceBLabelEl = document.getElementById("raceBLabel");
 const attackBtn = document.getElementById("attackBtn");
 const endTurnBtn = document.getElementById("endTurnBtn");
 const resetBtn = document.getElementById("resetBtn");
 
 let timelineToken = 0;
 const pendingActions = [];
+let gameStarted = false;
+let selectedRaces = {
+  player: RANDOM_RACE_ID,
+  enemy: RANDOM_RACE_ID
+};
+
+function getRaceById(raceId) {
+  return RACE_OPTIONS.find((race) => race.id === raceId) || RACE_OPTIONS[0];
+}
+
+function resolveRaceChoice(choiceId) {
+  if (choiceId === RANDOM_RACE_ID) {
+    return RACE_OPTIONS[randomInt(0, RACE_OPTIONS.length - 1)];
+  }
+  return getRaceById(choiceId);
+}
+
+function setGamePanelsVisible(visible) {
+  hudPanelEl.classList.toggle("hidden-until-start", !visible);
+  boardWrapEl.classList.toggle("hidden-until-start", !visible);
+  setupScreenEl.classList.toggle("hidden", visible);
+}
+
+function updateRaceLabels() {
+  raceALabelEl.textContent = state.stacks.player.race;
+  raceBLabelEl.textContent = state.stacks.enemy.race;
+}
 
 const initialState = () => {
+  const playerRace = resolveRaceChoice(selectedRaces.player);
+  const enemyRace = resolveRaceChoice(selectedRaces.enemy);
   const mapTerrain = createMapTerrain(GRID_SIZE);
   const starts = pickRandomStartPositions(mapTerrain);
-  const playerStack = createStack("Dawnforged", "#3b7a57", starts.player.x, starts.player.y);
-  const enemyStack = createStack("Ironclad", "#7f2f2f", starts.enemy.x, starts.enemy.y);
+  const playerStack = createStack("player", playerRace, starts.player.x, starts.player.y);
+  const enemyStack = createStack("enemy", enemyRace, starts.enemy.x, starts.enemy.y);
   const fog = {
     player: { radius: FOG_RADIUS, explored: createFogGrid(GRID_SIZE) },
     enemy: { radius: FOG_RADIUS, explored: createFogGrid(GRID_SIZE) }
@@ -79,13 +126,14 @@ const initialState = () => {
 
 let state = initialState();
 
-function createStack(race, color, x, y) {
+function createStack(side, race, x, y) {
   const count = randomInt(1, 8);
   const units = [];
 
   for (let i = 0; i < count; i += 1) {
     units.push({
-      id: `${race[0]}${i + 1}`,
+      id: `${side[0].toUpperCase()}${i + 1}`,
+      label: `${race.token}${i + 1}`,
       alive: true,
       hp: 1,
       maxCombatMp: randomInt(1, 3),
@@ -96,8 +144,10 @@ function createStack(race, color, x, y) {
   }
 
   return {
-    race,
-    color,
+    race: race.name,
+    raceId: race.id,
+    token: race.token,
+    color: race.color,
     x,
     y,
     maxMapMp: 3,
@@ -292,6 +342,10 @@ function getStackCount(side) {
   return getAliveUnits(side).length;
 }
 
+function unitName(unit) {
+  return unit.label || unit.id;
+}
+
 function getActivePlayerUnit() {
   if (!state.combat) return null;
   const alive = getAliveUnits("player");
@@ -318,7 +372,7 @@ function cycleActivePlayerUnit() {
   const next = alive[(index + 1 + alive.length) % alive.length];
   state.combat.activePlayerUnitId = next.id;
   clearTargetingMode();
-  statusEl.textContent = `Combat View: Selected ${next.id} (${next.currentCombatMp}/${next.maxCombatMp} MP).`;
+  statusEl.textContent = `Combat View: Selected ${unitName(next)} (${next.currentCombatMp}/${next.maxCombatMp} MP).`;
   updateControls();
   draw();
 }
@@ -434,7 +488,7 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender) {
     defender.y = null;
     return {
       ...result,
-      eliminated: defender.id,
+      eliminated: unitName(defender),
       winnerSide: attackerSide,
       loserSide: defenderSide
     };
@@ -446,7 +500,7 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender) {
   attacker.y = null;
   return {
     ...result,
-    eliminated: attacker.id,
+    eliminated: unitName(attacker),
     winnerSide: defenderSide,
     loserSide: attackerSide
   };
@@ -501,7 +555,7 @@ function updateControls() {
   const active = getActivePlayerUnit();
   if (combatMpLabelEl) {
     combatMpLabelEl.textContent = active
-      ? `${active.id} ${active.currentCombatMp}/${active.maxCombatMp}`
+      ? `${unitName(active)} ${active.currentCombatMp}/${active.maxCombatMp}`
       : `0/0`;
   }
 
@@ -580,7 +634,7 @@ function moveMapStack(key) {
   stack.y = ny;
   stack.currentMapMp -= terrainRule.cost;
   revealFogArea(state.fog.player.explored, stack.x, stack.y, state.fog.player.radius);
-  statusEl.textContent = `Map View: Dawnforged stack moved to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${stack.currentMapMp}.`;
+  statusEl.textContent = `Map View: ${stack.race} stack moved to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${stack.currentMapMp}.`;
 
   if (stack.x === state.stacks.enemy.x && stack.y === state.stacks.enemy.y) {
     startCombat("player");
@@ -638,9 +692,9 @@ function enemyMapTurn() {
   state.stacks.player.currentMapMp = state.stacks.player.maxMapMp;
 
   if (movedAny) {
-    statusEl.textContent = `Map View: Ironclad stack moved to (${enemy.x}, ${enemy.y}). Your map turn.`;
+    statusEl.textContent = `Map View: ${enemy.race} stack moved to (${enemy.x}, ${enemy.y}). Your map turn.`;
   } else {
-    statusEl.textContent = "Map View: Ironclad holds position due to terrain/MP limits. Your map turn.";
+    statusEl.textContent = `Map View: ${enemy.race} holds position due to terrain/MP limits. Your map turn.`;
   }
 
   updateControls();
@@ -662,7 +716,7 @@ function moveCombatActiveUnit(key) {
   }
 
   if (active.currentCombatMp <= 0) {
-    statusEl.textContent = `Combat View: ${active.id} has no MP. Press A to cycle units or End Turn.`;
+    statusEl.textContent = `Combat View: ${unitName(active)} has no MP. Press A to cycle units or End Turn.`;
     updateControls();
     return;
   }
@@ -694,7 +748,7 @@ function moveCombatActiveUnit(key) {
   }
 
   if (active.currentCombatMp < terrainRule.cost) {
-    statusEl.textContent = `Combat View: ${active.id} needs ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
+    statusEl.textContent = `Combat View: ${unitName(active)} needs ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
     return;
   }
 
@@ -702,7 +756,7 @@ function moveCombatActiveUnit(key) {
   active.y = ny;
   active.currentCombatMp -= terrainRule.cost;
 
-  statusEl.textContent = `Combat View: ${active.id} moved to (${nx}, ${ny}) on ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
+  statusEl.textContent = `Combat View: ${unitName(active)} moved to (${nx}, ${ny}) on ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
   updateControls();
   draw();
 }
@@ -712,7 +766,7 @@ function performPlayerAttack(attacker, defender) {
   attacker.currentCombatMp = 0;
   clearTargetingMode();
 
-  statusEl.textContent = `Combat View: ${attacker.id} attacked ${defender.id} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+  statusEl.textContent = `Combat View: ${unitName(attacker)} attacked ${unitName(defender)} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
 
   if (!checkCombatEnd()) {
     const next = getActivePlayerUnit();
@@ -746,7 +800,7 @@ function handleDirectionalAttack(key) {
   const target = getAliveUnits("enemy").find((unit) => unit.x === tx && unit.y === ty);
 
   if (!target) {
-    statusEl.textContent = `Combat View: No enemy in that direction from ${attacker.id}. Choose another direction or press Space to cancel targeting.`;
+    statusEl.textContent = `Combat View: No enemy in that direction from ${unitName(attacker)}. Choose another direction or press Space to cancel targeting.`;
     updateControls();
     draw();
     return true;
@@ -768,7 +822,7 @@ function playerCombatAttack() {
 
   if (state.combat && state.combat.targeting) {
     clearTargetingMode();
-    statusEl.textContent = `Combat View: Targeting canceled for ${active.id}.`;
+    statusEl.textContent = `Combat View: Targeting canceled for ${unitName(active)}.`;
     updateControls();
     draw();
     return;
@@ -787,7 +841,7 @@ function playerCombatAttack() {
   }
 
   state.combat.targeting = true;
-  statusEl.textContent = `Combat View: ${active.id} has multiple adjacent enemies. Press arrow key toward target to attack.`;
+  statusEl.textContent = `Combat View: ${unitName(active)} has multiple adjacent enemies. Press arrow key toward target to attack.`;
   updateControls();
   draw();
 }
@@ -810,7 +864,7 @@ function enemyCombatTurn() {
         const defender = targets[0];
         const result = resolveAttack("enemy", unit, "player", defender);
         unit.currentCombatMp = 0;
-        statusEl.textContent = `Combat View: ${unit.id} attacked ${defender.id} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+        statusEl.textContent = `Combat View: ${unitName(unit)} attacked ${unitName(defender)} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
 
         if (checkCombatEnd()) {
           updateControls();
@@ -888,7 +942,7 @@ function endTurn() {
 
   state.turn = "enemy";
   state.stacks.enemy.currentMapMp = state.stacks.enemy.maxMapMp;
-  statusEl.textContent = "Map View: Ironclad is taking a map turn...";
+  statusEl.textContent = `Map View: ${state.stacks.enemy.race} is taking a map turn...`;
   updateControls();
   draw();
   scheduleAction(350, enemyMapTurn);
@@ -936,8 +990,8 @@ function drawCombatGrid() {
   }
 }
 
-function drawStackToken(stack, baseLabel) {
-  const count = getStackCount(baseLabel === "D" ? "player" : "enemy");
+function drawStackToken(side, stack) {
+  const count = getStackCount(side);
   if (count <= 0) return;
 
   const cx = stack.x * TILE_SIZE + TILE_SIZE / 2;
@@ -951,7 +1005,7 @@ function drawStackToken(stack, baseLabel) {
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 18px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(`${baseLabel}${toSubscript(count)}`, cx, cy + 6);
+  ctx.fillText(`${stack.token}${toSubscript(count)}`, cx, cy + 6);
 }
 
 function drawCombatUnits() {
@@ -962,7 +1016,7 @@ function drawCombatUnits() {
       : []
   );
 
-  const drawSide = (side, color, labelPrefix) => {
+  const drawSide = (side, color) => {
     for (const unit of getAliveUnits(side)) {
       const cx = unit.x * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
       const cy = unit.y * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
@@ -989,20 +1043,19 @@ function drawCombatUnits() {
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 12px sans-serif";
       ctx.textAlign = "center";
-      const index = unit.id.replace(/\D/g, "");
-      ctx.fillText(`${labelPrefix}${index}`, cx, cy + 4);
+      ctx.fillText(unit.label || unit.id, cx, cy + 4);
     }
   };
 
-  drawSide("player", state.stacks.player.color, "D");
-  drawSide("enemy", state.stacks.enemy.color, "I");
+  drawSide("player", state.stacks.player.color);
+  drawSide("enemy", state.stacks.enemy.color);
 }
 
 function drawMapView() {
   drawMapGrid();
-  drawStackToken(state.stacks.player, "D");
+  drawStackToken("player", state.stacks.player);
   if (isTileVisibleToPlayer(state.stacks.enemy.x, state.stacks.enemy.y)) {
-    drawStackToken(state.stacks.enemy, "I");
+    drawStackToken("enemy", state.stacks.enemy);
   }
 }
 
@@ -1013,11 +1066,14 @@ function drawCombatView() {
   ctx.fillStyle = "#1f2a1f";
   ctx.font = "bold 18px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(`Dawnforged: ${getStackCount("player")} | Ironclad: ${getStackCount("enemy")}`, board.width / 2, 26);
+  ctx.fillText(`${state.stacks.player.race}: ${getStackCount("player")} | ${state.stacks.enemy.race}: ${getStackCount("enemy")}`, board.width / 2, 26);
 }
 
 function draw() {
   ctx.clearRect(0, 0, board.width, board.height);
+  if (!gameStarted) {
+    return;
+  }
   if (state.mode === "map") {
     drawMapView();
   } else {
@@ -1026,6 +1082,14 @@ function draw() {
 }
 
 function renderGameToText() {
+  if (!gameStarted) {
+    return JSON.stringify({
+      mode: "setup",
+      availableRaces: RACE_OPTIONS.map((race) => race.name),
+      selections: { ...selectedRaces }
+    });
+  }
+
   const active = getActivePlayerUnit();
   const targetableEnemies = state.mode === "combat" && active
     ? adjacentTargets(active, "enemy").map((unit) => ({ id: unit.id, x: unit.x, y: unit.y }))
@@ -1082,22 +1146,65 @@ function renderGameToText() {
 
 window.render_game_to_text = renderGameToText;
 window.advanceTime = (ms) => {
+  if (!gameStarted) {
+    return renderGameToText();
+  }
   advanceScheduledActions(Math.max(0, Number(ms) || 0));
   updateControls();
   draw();
   return renderGameToText();
 };
 
+function populateRaceSelect(selectEl) {
+  selectEl.innerHTML = "";
+
+  const randomOption = document.createElement("option");
+  randomOption.value = RANDOM_RACE_ID;
+  randomOption.textContent = "Random";
+  selectEl.appendChild(randomOption);
+
+  for (const race of RACE_OPTIONS) {
+    const option = document.createElement("option");
+    option.value = race.id;
+    option.textContent = race.name;
+    selectEl.appendChild(option);
+  }
+}
+
+function initializeSetupScreen() {
+  populateRaceSelect(playerRaceSelectEl);
+  populateRaceSelect(enemyRaceSelectEl);
+  playerRaceSelectEl.value = selectedRaces.player;
+  enemyRaceSelectEl.value = selectedRaces.enemy;
+}
+
+function startGameFromSetup() {
+  selectedRaces.player = playerRaceSelectEl.value || RANDOM_RACE_ID;
+  selectedRaces.enemy = enemyRaceSelectEl.value || RANDOM_RACE_ID;
+  gameStarted = true;
+  setGamePanelsVisible(true);
+  resetGame();
+}
+
 function resetGame() {
+  if (!gameStarted) {
+    return;
+  }
+
   timelineToken += 1;
   pendingActions.length = 0;
   state = initialState();
-  statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Stack sizes are random (1-8): D${toSubscript(getStackCount("player"))} vs I${toSubscript(getStackCount("enemy"))}.`;
+  updateRaceLabels();
+  statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Stack sizes are random (1-8): ${state.stacks.player.token}${toSubscript(getStackCount("player"))} vs ${state.stacks.enemy.token}${toSubscript(getStackCount("enemy"))}.`;
   updateControls();
   draw();
 }
 
 document.addEventListener("keydown", (event) => {
+  if (!gameStarted) {
+    return;
+  }
+
   if (event.code === "Enter") {
     endTurn();
     return;
@@ -1135,5 +1242,8 @@ document.addEventListener("keydown", (event) => {
 attackBtn.addEventListener("click", playerCombatAttack);
 endTurnBtn.addEventListener("click", endTurn);
 resetBtn.addEventListener("click", resetGame);
+startGameBtnEl.addEventListener("click", startGameFromSetup);
 
-resetGame();
+initializeSetupScreen();
+setGamePanelsVisible(false);
+draw();

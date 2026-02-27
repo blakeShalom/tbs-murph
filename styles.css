@@ -39,6 +39,40 @@ body {
   font-size: 1.3rem;
 }
 
+.setup-screen {
+  background: #f8f4e6;
+  border: 2px solid #d8cfae;
+  border-radius: 10px;
+  padding: 1rem;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.setup-screen h2 {
+  margin: 0;
+  font-size: 1.15rem;
+}
+
+.setup-screen label {
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+
+.setup-screen select {
+  padding: 0.45rem;
+  border-radius: 6px;
+  border: 1px solid #a9a284;
+  background: #fffdf3;
+}
+
+.setup-screen.hidden {
+  display: none;
+}
+
+.hidden-until-start {
+  display: none;
+}
+
 .meta {
   display: flex;
   gap: 1rem;
