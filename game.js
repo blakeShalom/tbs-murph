@@ -2,6 +2,7 @@ const TILE_SIZE = 64;
 const GRID_SIZE = 10;
 const COMBAT_GRID_SIZE = 8;
 const COMBAT_TILE_SIZE = boardSize() / COMBAT_GRID_SIZE;
+const FOG_RADIUS = 2;
 
 const MAP_TERRAIN_RULES = {
   plains: { label: "Plains", cost: 1, passable: true, color: "#d8e2c5" },
@@ -47,19 +48,34 @@ const resetBtn = document.getElementById("resetBtn");
 let timelineToken = 0;
 const pendingActions = [];
 
-const initialState = () => ({
-  mode: "map",
-  turn: "player",
-  combatTurn: "player",
-  gameOver: false,
-  combat: null,
-  mapTerrain: createMapTerrain(GRID_SIZE),
-  combatTerrain: null,
-  stacks: {
-    player: createStack("Dawnforged", "#3b7a57", 1, 1),
-    enemy: createStack("Ironclad", "#7f2f2f", GRID_SIZE - 2, GRID_SIZE - 2)
-  }
-});
+const initialState = () => {
+  const mapTerrain = createMapTerrain(GRID_SIZE);
+  const starts = pickRandomStartPositions(mapTerrain);
+  const playerStack = createStack("Dawnforged", "#3b7a57", starts.player.x, starts.player.y);
+  const enemyStack = createStack("Ironclad", "#7f2f2f", starts.enemy.x, starts.enemy.y);
+  const fog = {
+    player: { radius: FOG_RADIUS, explored: createFogGrid(GRID_SIZE) },
+    enemy: { radius: FOG_RADIUS, explored: createFogGrid(GRID_SIZE) }
+  };
+
+  revealFogArea(fog.player.explored, playerStack.x, playerStack.y, fog.player.radius);
+  revealFogArea(fog.enemy.explored, enemyStack.x, enemyStack.y, fog.enemy.radius);
+
+  return {
+    mode: "map",
+    turn: "player",
+    combatTurn: "player",
+    gameOver: false,
+    combat: null,
+    mapTerrain,
+    combatTerrain: null,
+    fog,
+    stacks: {
+      player: playerStack,
+      enemy: enemyStack
+    }
+  };
+};
 
 let state = initialState();
 
@@ -88,6 +104,41 @@ function createStack(race, color, x, y) {
     currentMapMp: 3,
     units
   };
+}
+
+function createFogGrid(size) {
+  return Array.from({ length: size }, () => Array.from({ length: size }, () => false));
+}
+
+function pickRandomStartPositions(mapTerrain) {
+  const passableTiles = [];
+
+  for (let y = 0; y < GRID_SIZE; y += 1) {
+    for (let x = 0; x < GRID_SIZE; x += 1) {
+      const terrainRule = getMapTerrainRule(mapTerrain[y][x]);
+      if (terrainRule.passable) {
+        passableTiles.push({ x, y });
+      }
+    }
+  }
+
+  if (passableTiles.length < 2) {
+    return {
+      player: { x: 1, y: 1 },
+      enemy: { x: GRID_SIZE - 2, y: GRID_SIZE - 2 }
+    };
+  }
+
+  const player = passableTiles[randomInt(0, passableTiles.length - 1)];
+  const farTiles = passableTiles.filter(
+    (tile) => !(tile.x === player.x && tile.y === player.y) && manhattan(tile, player) >= 4
+  );
+  const enemyPool = farTiles.length > 0
+    ? farTiles
+    : passableTiles.filter((tile) => !(tile.x === player.x && tile.y === player.y));
+  const enemy = enemyPool[randomInt(0, enemyPool.length - 1)];
+
+  return { player, enemy };
 }
 
 function createMapTerrain(size) {
@@ -266,6 +317,7 @@ function cycleActivePlayerUnit() {
   const index = alive.findIndex((unit) => unit.id === currentId);
   const next = alive[(index + 1 + alive.length) % alive.length];
   state.combat.activePlayerUnitId = next.id;
+  clearTargetingMode();
   statusEl.textContent = `Combat View: Selected ${next.id} (${next.currentCombatMp}/${next.maxCombatMp} MP).`;
   updateControls();
   draw();
@@ -291,8 +343,42 @@ function manhattan(a, b) {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
 }
 
+function chebyshev(x1, y1, x2, y2) {
+  return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
+}
+
+function revealFogArea(exploredGrid, cx, cy, radius) {
+  for (let y = cy - radius; y <= cy + radius; y += 1) {
+    for (let x = cx - radius; x <= cx + radius; x += 1) {
+      if (inBounds(x, y, GRID_SIZE)) {
+        exploredGrid[y][x] = true;
+      }
+    }
+  }
+}
+
+function isTileVisibleToPlayer(x, y) {
+  if (state.mode !== "map") return true;
+  const player = state.stacks.player;
+  return chebyshev(player.x, player.y, x, y) <= state.fog.player.radius;
+}
+
 function adjacentTargets(attacker, defenderSide) {
   return getAliveUnits(defenderSide).filter((unit) => manhattan(attacker, unit) === 1);
+}
+
+function getDirectionDelta(key) {
+  if (key === "ArrowUp") return { dx: 0, dy: -1 };
+  if (key === "ArrowDown") return { dx: 0, dy: 1 };
+  if (key === "ArrowLeft") return { dx: -1, dy: 0 };
+  if (key === "ArrowRight") return { dx: 1, dy: 0 };
+  return null;
+}
+
+function clearTargetingMode() {
+  if (state.combat) {
+    state.combat.targeting = false;
+  }
 }
 
 function getMoveOptions(from, to) {
@@ -435,7 +521,8 @@ function startCombat(initiator) {
   state.combatTurn = initiator;
   state.combatTerrain = createCombatTerrain(COMBAT_GRID_SIZE);
   state.combat = {
-    activePlayerUnitId: null
+    activePlayerUnitId: null,
+    targeting: false
   };
 
   placeCombatUnits();
@@ -492,6 +579,7 @@ function moveMapStack(key) {
   stack.x = nx;
   stack.y = ny;
   stack.currentMapMp -= terrainRule.cost;
+  revealFogArea(state.fog.player.explored, stack.x, stack.y, state.fog.player.radius);
   statusEl.textContent = `Map View: Dawnforged stack moved to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${stack.currentMapMp}.`;
 
   if (stack.x === state.stacks.enemy.x && stack.y === state.stacks.enemy.y) {
@@ -537,6 +625,7 @@ function enemyMapTurn() {
     enemy.x = selected.x;
     enemy.y = selected.y;
     enemy.currentMapMp -= selected.cost;
+    revealFogArea(state.fog.enemy.explored, enemy.x, enemy.y, state.fog.enemy.radius);
     movedAny = true;
 
     if (enemy.x === player.x && enemy.y === player.y) {
@@ -618,28 +707,12 @@ function moveCombatActiveUnit(key) {
   draw();
 }
 
-function playerCombatAttack() {
-  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
-    return;
-  }
+function performPlayerAttack(attacker, defender) {
+  const result = resolveAttack("player", attacker, "enemy", defender);
+  attacker.currentCombatMp = 0;
+  clearTargetingMode();
 
-  const active = getActivePlayerUnit();
-  if (!active) {
-    return;
-  }
-
-  const targets = adjacentTargets(active, "enemy");
-  if (targets.length === 0) {
-    statusEl.textContent = "Combat View: Move adjacent to an enemy unit to attack.";
-    updateControls();
-    return;
-  }
-
-  const defender = targets[0];
-  const result = resolveAttack("player", active, "enemy", defender);
-  active.currentCombatMp = 0;
-
-  statusEl.textContent = `Combat View: ${active.id} attacked ${defender.id} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+  statusEl.textContent = `Combat View: ${attacker.id} attacked ${defender.id} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
 
   if (!checkCombatEnd()) {
     const next = getActivePlayerUnit();
@@ -654,11 +727,77 @@ function playerCombatAttack() {
   draw();
 }
 
+function handleDirectionalAttack(key) {
+  if (state.mode !== "combat" || !state.combat || !state.combat.targeting) {
+    return false;
+  }
+
+  const attacker = getActivePlayerUnit();
+  if (!attacker) {
+    clearTargetingMode();
+    return true;
+  }
+
+  const delta = getDirectionDelta(key);
+  if (!delta) return false;
+
+  const tx = attacker.x + delta.dx;
+  const ty = attacker.y + delta.dy;
+  const target = getAliveUnits("enemy").find((unit) => unit.x === tx && unit.y === ty);
+
+  if (!target) {
+    statusEl.textContent = `Combat View: No enemy in that direction from ${attacker.id}. Choose another direction or press Space to cancel targeting.`;
+    updateControls();
+    draw();
+    return true;
+  }
+
+  performPlayerAttack(attacker, target);
+  return true;
+}
+
+function playerCombatAttack() {
+  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
+    return;
+  }
+
+  const active = getActivePlayerUnit();
+  if (!active) {
+    return;
+  }
+
+  if (state.combat && state.combat.targeting) {
+    clearTargetingMode();
+    statusEl.textContent = `Combat View: Targeting canceled for ${active.id}.`;
+    updateControls();
+    draw();
+    return;
+  }
+
+  const targets = adjacentTargets(active, "enemy");
+  if (targets.length === 0) {
+    statusEl.textContent = "Combat View: Move adjacent to an enemy unit to attack.";
+    updateControls();
+    return;
+  }
+
+  if (targets.length === 1) {
+    performPlayerAttack(active, targets[0]);
+    return;
+  }
+
+  state.combat.targeting = true;
+  statusEl.textContent = `Combat View: ${active.id} has multiple adjacent enemies. Press arrow key toward target to attack.`;
+  updateControls();
+  draw();
+}
+
 function enemyCombatTurn() {
   if (state.mode !== "combat" || state.combatTurn !== "enemy" || state.gameOver) {
     return;
   }
 
+  clearTargetingMode();
   resetCombatMp("enemy");
   const enemyUnits = [...getAliveUnits("enemy")];
 
@@ -734,6 +873,7 @@ function endTurn() {
       return;
     }
 
+    clearTargetingMode();
     state.combatTurn = "enemy";
     statusEl.textContent = "Combat View: You ended your turn.";
     updateControls();
@@ -757,12 +897,28 @@ function endTurn() {
 function drawMapGrid() {
   for (let y = 0; y < GRID_SIZE; y += 1) {
     for (let x = 0; x < GRID_SIZE; x += 1) {
+      const visible = isTileVisibleToPlayer(x, y);
+      const explored = state.fog.player.explored[y][x];
+
+      if (!visible && !explored) {
+        ctx.fillStyle = "#1a1f24";
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        ctx.strokeStyle = "rgba(35, 42, 49, 0.8)";
+        ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+        continue;
+      }
+
       const terrainType = state.mapTerrain[y][x];
       const terrainRule = getMapTerrainRule(terrainType);
       ctx.fillStyle = terrainRule.color;
       ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
       ctx.strokeStyle = "rgba(0, 0, 0, 0.14)";
       ctx.strokeRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+
+      if (!visible && explored) {
+        ctx.fillStyle = "rgba(16, 20, 26, 0.45)";
+        ctx.fillRect(x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE);
+      }
     }
   }
 }
@@ -800,6 +956,11 @@ function drawStackToken(stack, baseLabel) {
 
 function drawCombatUnits() {
   const active = getActivePlayerUnit();
+  const targetableIds = new Set(
+    state.combat?.targeting && active
+      ? adjacentTargets(active, "enemy").map((unit) => unit.id)
+      : []
+  );
 
   const drawSide = (side, color, labelPrefix) => {
     for (const unit of getAliveUnits(side)) {
@@ -813,6 +974,13 @@ function drawCombatUnits() {
 
       if (active && side === "player" && unit.id === active.id) {
         ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+
+      if (side === "enemy" && targetableIds.has(unit.id)) {
+        ctx.strokeStyle = "#ffd34d";
         ctx.lineWidth = 3;
         ctx.stroke();
         ctx.lineWidth = 1;
@@ -833,7 +1001,9 @@ function drawCombatUnits() {
 function drawMapView() {
   drawMapGrid();
   drawStackToken(state.stacks.player, "D");
-  drawStackToken(state.stacks.enemy, "I");
+  if (isTileVisibleToPlayer(state.stacks.enemy.x, state.stacks.enemy.y)) {
+    drawStackToken(state.stacks.enemy, "I");
+  }
 }
 
 function drawCombatView() {
@@ -857,12 +1027,23 @@ function draw() {
 
 function renderGameToText() {
   const active = getActivePlayerUnit();
+  const targetableEnemies = state.mode === "combat" && active
+    ? adjacentTargets(active, "enemy").map((unit) => ({ id: unit.id, x: unit.x, y: unit.y }))
+    : [];
+  const enemyVisible = isTileVisibleToPlayer(state.stacks.enemy.x, state.stacks.enemy.y);
+  const exploredTiles = state.fog.player.explored.flat().filter(Boolean).length;
   const payload = {
     coordinateSystem: "origin=(0,0) at top-left; +x right, +y down; integer tile coordinates",
     mode: state.mode,
     turn: state.turn,
     combatTurn: state.combatTurn,
     gameOver: state.gameOver,
+    fog: {
+      playerRadius: state.fog.player.radius,
+      exploredTiles,
+      totalTiles: GRID_SIZE * GRID_SIZE,
+      enemyVisible
+    },
     stacks: {
       player: {
         race: state.stacks.player.race,
@@ -873,11 +1054,15 @@ function renderGameToText() {
       enemy: {
         race: state.stacks.enemy.race,
         count: getStackCount("enemy"),
-        mapPos: { x: state.stacks.enemy.x, y: state.stacks.enemy.y },
+        mapPos: enemyVisible || state.mode !== "map"
+          ? { x: state.stacks.enemy.x, y: state.stacks.enemy.y }
+          : null,
         mapMp: state.stacks.enemy.currentMapMp
       }
     },
     activePlayerUnitId: active ? active.id : null,
+    targetingMode: Boolean(state.combat?.targeting),
+    targetableEnemies,
     combatUnits: state.mode === "combat"
       ? ["player", "enemy"].flatMap((side) =>
           getAliveUnits(side).map((unit) => ({
@@ -907,7 +1092,7 @@ function resetGame() {
   timelineToken += 1;
   pendingActions.length = 0;
   state = initialState();
-  statusEl.textContent = `Map View: Stack sizes are random (1-8). Move with arrows. Stacks are shown as subscripts (D${toSubscript(getStackCount("player"))}, I${toSubscript(getStackCount("enemy"))}).`;
+  statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Stack sizes are random (1-8): D${toSubscript(getStackCount("player"))} vs I${toSubscript(getStackCount("enemy"))}.`;
   updateControls();
   draw();
 }
@@ -932,6 +1117,12 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "KeyA" && state.mode === "combat" && state.combatTurn === "player") {
     cycleActivePlayerUnit();
     return;
+  }
+
+  if (state.mode === "combat" && state.combatTurn === "player" && state.combat?.targeting) {
+    if (handleDirectionalAttack(event.key)) {
+      return;
+    }
   }
 
   if (state.mode === "map") {
