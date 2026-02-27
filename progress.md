@@ -33,3 +33,21 @@ TODO / suggestions for next agent:
 - Add `.gitignore` entries for `node_modules/` and `output/` to keep test artifacts out of commits.
 
 - Added `.gitignore` exclusions for `node_modules/` and `output/` artifact directories.
+
+- Implemented stack-based runtime in `game.js`.
+  - Each side now starts with random stack size (1-8).
+  - Map token renders stack count as subscript (`Dₙ` / `Iₙ`).
+  - Combat deploys all alive stack units on tactical map.
+  - Each combat unit has its own movement points and moves independently.
+  - Added player unit cycling key (`A`) during combat.
+- Preserved and updated automation hooks: `render_game_to_text` and deterministic `advanceTime(ms)`.
+
+- Ran Playwright stack scenarios:
+  - `output/web-game/stack-map/*` confirmed map stack subscripts render and stack counts appear in text state.
+  - `output/web-game/stack-combat/*` confirmed multiple units per side deploy on combat map and track per-unit MP/state.
+- No `errors-0.json` produced in these runs (no new console/page errors captured).
+- Updated HUD hint text to include stack/combat controls (`A`, arrows, `Space`, `Enter`).
+
+TODO/suggestions:
+- Mirror stack runtime changes into `src/` modules to remove divergence from `game.js`.
+- Add deterministic seed support for stack-size and per-unit MP generation to make Playwright scenarios reproducible.

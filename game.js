@@ -17,6 +17,19 @@ const COMBAT_TERRAIN_RULES = {
   blocked: { label: "Blocked", cost: Infinity, passable: false, color: "#6f6759" }
 };
 
+const SUBSCRIPT_DIGITS = {
+  "0": "₀",
+  "1": "₁",
+  "2": "₂",
+  "3": "₃",
+  "4": "₄",
+  "5": "₅",
+  "6": "₆",
+  "7": "₇",
+  "8": "₈",
+  "9": "₉"
+};
+
 function boardSize() {
   return 640;
 }
@@ -31,6 +44,9 @@ const attackBtn = document.getElementById("attackBtn");
 const endTurnBtn = document.getElementById("endTurnBtn");
 const resetBtn = document.getElementById("resetBtn");
 
+let timelineToken = 0;
+const pendingActions = [];
+
 const initialState = () => ({
   mode: "map",
   turn: "player",
@@ -39,75 +55,39 @@ const initialState = () => ({
   combat: null,
   mapTerrain: createMapTerrain(GRID_SIZE),
   combatTerrain: null,
-  units: {
-    player: {
-      race: "Dawnforged",
-      x: 1,
-      y: 1,
-      hp: 10,
-      color: "#3b7a57",
-      maxMapMp: 3,
-      currentMapMp: 3,
-      maxCombatMp: 2,
-      currentCombatMp: 2
-    },
-    enemy: {
-      race: "Ironclad",
-      x: GRID_SIZE - 2,
-      y: GRID_SIZE - 2,
-      hp: 10,
-      color: "#7f2f2f",
-      maxMapMp: 3,
-      currentMapMp: 3,
-      maxCombatMp: 2,
-      currentCombatMp: 2
-    }
+  stacks: {
+    player: createStack("Dawnforged", "#3b7a57", 1, 1),
+    enemy: createStack("Ironclad", "#7f2f2f", GRID_SIZE - 2, GRID_SIZE - 2)
   }
 });
 
 let state = initialState();
-const pendingActions = [];
 
-function scheduleAction(delayMs, fn) {
-  const task = {
-    remaining: delayMs,
-    fn,
-    done: false
+function createStack(race, color, x, y) {
+  const count = randomInt(1, 8);
+  const units = [];
+
+  for (let i = 0; i < count; i += 1) {
+    units.push({
+      id: `${race[0]}${i + 1}`,
+      alive: true,
+      hp: 1,
+      maxCombatMp: randomInt(1, 3),
+      currentCombatMp: 0,
+      x: null,
+      y: null
+    });
+  }
+
+  return {
+    race,
+    color,
+    x,
+    y,
+    maxMapMp: 3,
+    currentMapMp: 3,
+    units
   };
-  pendingActions.push(task);
-
-  setTimeout(() => {
-    if (task.done) return;
-    task.done = true;
-    flushDoneTasks();
-    fn();
-  }, delayMs);
-}
-
-function advanceScheduledActions(ms) {
-  const due = [];
-  for (const task of pendingActions) {
-    if (task.done) continue;
-    task.remaining -= ms;
-    if (task.remaining <= 0) {
-      task.done = true;
-      due.push(task.fn);
-    }
-  }
-  flushDoneTasks();
-  for (const fn of due) {
-    fn();
-  }
-}
-
-function flushDoneTasks() {
-  let i = pendingActions.length - 1;
-  while (i >= 0) {
-    if (pendingActions[i].done) {
-      pendingActions.splice(i, 1);
-    }
-    i -= 1;
-  }
 }
 
 function createMapTerrain(size) {
@@ -175,14 +155,66 @@ function createCombatTerrain(size) {
   for (let x = 0; x < size; x += 1) {
     grid[mid][x] = "open";
   }
-  grid[mid][1] = "open";
-  grid[mid][size - 2] = "open";
 
   return grid;
 }
 
+function scheduleAction(delayMs, fn) {
+  const task = {
+    remaining: delayMs,
+    fn,
+    done: false,
+    token: timelineToken
+  };
+  pendingActions.push(task);
+
+  setTimeout(() => {
+    if (task.done || task.token !== timelineToken) return;
+    task.done = true;
+    flushDoneTasks();
+    fn();
+  }, delayMs);
+}
+
+function advanceScheduledActions(ms) {
+  const due = [];
+  for (const task of pendingActions) {
+    if (task.done || task.token !== timelineToken) continue;
+    task.remaining -= ms;
+    if (task.remaining <= 0) {
+      task.done = true;
+      due.push(task.fn);
+    }
+  }
+  flushDoneTasks();
+  for (const fn of due) {
+    fn();
+  }
+}
+
+function flushDoneTasks() {
+  let i = pendingActions.length - 1;
+  while (i >= 0) {
+    if (pendingActions[i].done || pendingActions[i].token !== timelineToken) {
+      pendingActions.splice(i, 1);
+    }
+    i -= 1;
+  }
+}
+
 function inBounds(x, y, size = GRID_SIZE) {
   return x >= 0 && y >= 0 && x < size && y < size;
+}
+
+function randomInt(min, max) {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
+function toSubscript(n) {
+  return String(n)
+    .split("")
+    .map((digit) => SUBSCRIPT_DIGITS[digit] || digit)
+    .join("");
 }
 
 function getMapTerrainRule(type) {
@@ -201,11 +233,103 @@ function getCombatTerrainAt(x, y) {
   return state.combatTerrain[y][x];
 }
 
+function getAliveUnits(side) {
+  return state.stacks[side].units.filter((unit) => unit.alive);
+}
+
+function getStackCount(side) {
+  return getAliveUnits(side).length;
+}
+
+function getActivePlayerUnit() {
+  if (!state.combat) return null;
+  const alive = getAliveUnits("player");
+  if (alive.length === 0) return null;
+
+  let current = alive.find((unit) => unit.id === state.combat.activePlayerUnitId);
+  if (!current) {
+    current = alive[0];
+    state.combat.activePlayerUnitId = current.id;
+  }
+  return current;
+}
+
+function cycleActivePlayerUnit() {
+  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
+    return;
+  }
+
+  const alive = getAliveUnits("player");
+  if (alive.length === 0) return;
+
+  const currentId = state.combat.activePlayerUnitId;
+  const index = alive.findIndex((unit) => unit.id === currentId);
+  const next = alive[(index + 1 + alive.length) % alive.length];
+  state.combat.activePlayerUnitId = next.id;
+  statusEl.textContent = `Combat View: Selected ${next.id} (${next.currentCombatMp}/${next.maxCombatMp} MP).`;
+  updateControls();
+  draw();
+}
+
+function getCombatUnitAt(x, y) {
+  for (const side of ["player", "enemy"]) {
+    for (const unit of getAliveUnits(side)) {
+      if (unit.x === x && unit.y === y) {
+        return { side, unit };
+      }
+    }
+  }
+  return null;
+}
+
+function isOccupied(x, y, ignoreId = null) {
+  const hit = getCombatUnitAt(x, y);
+  return Boolean(hit && hit.unit.id !== ignoreId);
+}
+
+function manhattan(a, b) {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+}
+
+function adjacentTargets(attacker, defenderSide) {
+  return getAliveUnits(defenderSide).filter((unit) => manhattan(attacker, unit) === 1);
+}
+
+function getMoveOptions(from, to) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const options = [];
+
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    if (dx !== 0) options.push({ x: from.x + Math.sign(dx), y: from.y });
+    if (dy !== 0) options.push({ x: from.x, y: from.y + Math.sign(dy) });
+  } else {
+    if (dy !== 0) options.push({ x: from.x, y: from.y + Math.sign(dy) });
+    if (dx !== 0) options.push({ x: from.x + Math.sign(dx), y: from.y });
+  }
+
+  return options;
+}
+
+function nearestTarget(from, candidates) {
+  let best = null;
+  let bestDistance = Infinity;
+
+  for (const candidate of candidates) {
+    const d = manhattan(from, candidate);
+    if (d < bestDistance) {
+      bestDistance = d;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
 function rollCombat(attacker, defender) {
-  const attackerRoll = Math.floor(Math.random() * 20) + 1;
-  const defenderRoll = Math.floor(Math.random() * 20) + 1;
-  const attackerScore = attackerRoll + attacker.hp;
-  const defenderScore = defenderRoll + defender.hp;
+  const attackerRoll = randomInt(1, 20);
+  const defenderRoll = randomInt(1, 20);
+  const attackerScore = attackerRoll + attacker.maxCombatMp;
+  const defenderScore = defenderRoll + defender.maxCombatMp;
 
   return {
     attackerRoll,
@@ -214,168 +338,123 @@ function rollCombat(attacker, defender) {
   };
 }
 
-function areCombatantsAdjacent() {
-  if (!state.combat) return false;
-  const p = state.combat.player;
-  const e = state.combat.enemy;
-  return Math.abs(p.x - e.x) + Math.abs(p.y - e.y) === 1;
+function resolveAttack(attackerSide, attacker, defenderSide, defender) {
+  const result = rollCombat(attacker, defender);
+
+  if (result.winner === "attacker") {
+    defender.alive = false;
+    defender.hp = 0;
+    defender.x = null;
+    defender.y = null;
+    return {
+      ...result,
+      eliminated: defender.id,
+      winnerSide: attackerSide,
+      loserSide: defenderSide
+    };
+  }
+
+  attacker.alive = false;
+  attacker.hp = 0;
+  attacker.x = null;
+  attacker.y = null;
+  return {
+    ...result,
+    eliminated: attacker.id,
+    winnerSide: defenderSide,
+    loserSide: attackerSide
+  };
+}
+
+function checkCombatEnd() {
+  const playerCount = getStackCount("player");
+  const enemyCount = getStackCount("enemy");
+
+  if (playerCount <= 0 || enemyCount <= 0) {
+    state.gameOver = true;
+    const winnerSide = playerCount > 0 ? "player" : "enemy";
+    statusEl.textContent = `${state.stacks[winnerSide].race} stack wins (${getStackCount("player")} vs ${getStackCount("enemy")}). Game over.`;
+    return true;
+  }
+  return false;
+}
+
+function resetCombatMp(side) {
+  for (const unit of getAliveUnits(side)) {
+    unit.currentCombatMp = unit.maxCombatMp;
+  }
+}
+
+function placeCombatUnits() {
+  const placeSide = (side) => {
+    const alive = getAliveUnits(side);
+    const slots = [];
+    const primaryX = side === "player" ? 1 : COMBAT_GRID_SIZE - 2;
+    const secondaryX = side === "player" ? 2 : COMBAT_GRID_SIZE - 3;
+
+    for (let y = 1; y < COMBAT_GRID_SIZE - 1; y += 1) {
+      slots.push({ x: primaryX, y });
+      slots.push({ x: secondaryX, y });
+    }
+
+    for (let i = 0; i < alive.length; i += 1) {
+      const slot = slots[i];
+      alive[i].x = slot.x;
+      alive[i].y = slot.y;
+    }
+  };
+
+  placeSide("player");
+  placeSide("enemy");
 }
 
 function updateControls() {
   modeLabelEl.textContent = state.mode === "map" ? "Map" : "Combat";
-  mapMpLabelEl.textContent = `${state.units.player.currentMapMp}/${state.units.player.maxMapMp}`;
+  mapMpLabelEl.textContent = `${state.stacks.player.currentMapMp}/${state.stacks.player.maxMapMp}`;
+
+  const active = getActivePlayerUnit();
   if (combatMpLabelEl) {
-    combatMpLabelEl.textContent = `${state.units.player.currentCombatMp}/${state.units.player.maxCombatMp}`;
+    combatMpLabelEl.textContent = active
+      ? `${active.id} ${active.currentCombatMp}/${active.maxCombatMp}`
+      : `0/0`;
   }
-  attackBtn.disabled =
-    state.mode !== "combat" ||
-    state.combatTurn !== "player" ||
-    state.gameOver ||
-    !areCombatantsAdjacent();
+
+  const canAttack =
+    state.mode === "combat" &&
+    state.combatTurn === "player" &&
+    !state.gameOver &&
+    active &&
+    adjacentTargets(active, "enemy").length > 0;
+
+  attackBtn.disabled = !canAttack;
   endTurnBtn.disabled = state.gameOver;
 }
 
 function startCombat(initiator) {
   state.mode = "combat";
   state.combatTurn = initiator;
-  state.combat = {
-    player: { x: 1, y: Math.floor(COMBAT_GRID_SIZE / 2) },
-    enemy: { x: COMBAT_GRID_SIZE - 2, y: Math.floor(COMBAT_GRID_SIZE / 2) }
-  };
   state.combatTerrain = createCombatTerrain(COMBAT_GRID_SIZE);
-  state.units.player.currentCombatMp = state.units.player.maxCombatMp;
-  state.units.enemy.currentCombatMp = state.units.enemy.maxCombatMp;
+  state.combat = {
+    activePlayerUnitId: null
+  };
 
-  statusEl.textContent = `Combat View: ${state.units.player.race} engages ${state.units.enemy.race} on tactical grid. ${initiator === "player" ? "Your" : "Enemy"} combat turn.`;
+  placeCombatUnits();
+  resetCombatMp("player");
+  resetCombatMp("enemy");
+
+  const first = getAliveUnits("player")[0];
+  state.combat.activePlayerUnitId = first ? first.id : null;
+
+  statusEl.textContent = `Combat View: ${state.stacks.player.race} (${getStackCount("player")}) engages ${state.stacks.enemy.race} (${getStackCount("enemy")}). ${initiator === "player" ? "Your" : "Enemy"} combat turn.`;
   updateControls();
   draw();
 
   if (initiator === "enemy") {
-    enemyCombatTurn();
+    scheduleAction(120, enemyCombatTurn);
   }
 }
 
-function resolveCombatAttack(attackerKey, defenderKey) {
-  if (state.mode !== "combat" || state.gameOver) {
-    return;
-  }
-
-  const attacker = state.units[attackerKey];
-  const defender = state.units[defenderKey];
-  const result = rollCombat(attacker, defender);
-
-  if (result.winner === "attacker") {
-    defender.hp = 0;
-    state.gameOver = true;
-    statusEl.textContent = `${attacker.race} wins combat (roll ${result.attackerRoll} vs ${result.defenderRoll}). Game over.`;
-  } else {
-    attacker.hp = 0;
-    state.gameOver = true;
-    statusEl.textContent = `${defender.race} holds (roll ${result.defenderRoll} vs ${result.attackerRoll}). Game over.`;
-  }
-
-  updateControls();
-  draw();
-}
-
-function enemyCombatTurn() {
-  if (state.mode !== "combat" || state.gameOver || state.combatTurn !== "enemy") {
-    return;
-  }
-
-  const enemyPos = state.combat.enemy;
-  const playerPos = state.combat.player;
-  const enemyUnit = state.units.enemy;
-  let movedAny = false;
-  let lastPos = { ...enemyPos };
-
-  while (enemyUnit.currentCombatMp > 0 && !areCombatantsAdjacent()) {
-    const options = getEnemyMoveOptions(enemyPos, playerPos);
-    let selected = null;
-
-    for (const option of options) {
-      if (!inBounds(option.x, option.y, COMBAT_GRID_SIZE)) {
-        continue;
-      }
-      if (option.x === playerPos.x && option.y === playerPos.y) {
-        continue;
-      }
-
-      const terrainRule = getCombatTerrainRule(getCombatTerrainAt(option.x, option.y));
-      if (!terrainRule.passable || terrainRule.cost > enemyUnit.currentCombatMp) {
-        continue;
-      }
-
-      selected = { ...option, terrainRule };
-      break;
-    }
-
-    if (!selected) {
-      break;
-    }
-
-    enemyPos.x = selected.x;
-    enemyPos.y = selected.y;
-    enemyUnit.currentCombatMp -= selected.terrainRule.cost;
-    movedAny = true;
-    lastPos = { ...enemyPos };
-  }
-
-  if (areCombatantsAdjacent()) {
-    if (movedAny) {
-      statusEl.textContent = `Combat View: Ironclad repositions to (${lastPos.x}, ${lastPos.y}) and attacks...`;
-    } else {
-      statusEl.textContent = "Combat View: Ironclad attacks...";
-    }
-    updateControls();
-    draw();
-
-    scheduleAction(400, () => {
-      resolveCombatAttack("enemy", "player");
-      if (!state.gameOver) {
-        state.combatTurn = "player";
-        state.units.player.currentCombatMp = state.units.player.maxCombatMp;
-        statusEl.textContent = "Combat View: Your combat turn.";
-        updateControls();
-        draw();
-      }
-    });
-    return;
-  }
-
-  state.combatTurn = "player";
-  state.units.player.currentCombatMp = state.units.player.maxCombatMp;
-
-  if (movedAny) {
-    statusEl.textContent = `Combat View: Ironclad repositions to (${lastPos.x}, ${lastPos.y}). Your combat turn.`;
-  } else {
-    statusEl.textContent = "Combat View: Ironclad holds due to terrain/MP limits. Your combat turn.";
-  }
-  updateControls();
-  draw();
-}
-
-function playerCombatAttack() {
-  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
-    return;
-  }
-
-  if (!areCombatantsAdjacent()) {
-    statusEl.textContent = "Combat View: Move adjacent to attack.";
-    updateControls();
-    return;
-  }
-
-  resolveCombatAttack("player", "enemy");
-  if (!state.gameOver) {
-    state.combatTurn = "enemy";
-    state.units.enemy.currentCombatMp = state.units.enemy.maxCombatMp;
-    updateControls();
-    enemyCombatTurn();
-  }
-}
-
-function moveMapUnit(key) {
+function moveMapStack(key) {
   if (state.mode !== "map" || state.turn !== "player" || state.gameOver) {
     return;
   }
@@ -383,9 +462,9 @@ function moveMapUnit(key) {
     return;
   }
 
-  const player = state.units.player;
-  let nx = player.x;
-  let ny = player.y;
+  const stack = state.stacks.player;
+  let nx = stack.x;
+  let ny = stack.y;
 
   if (key === "ArrowUp") ny -= 1;
   if (key === "ArrowDown") ny += 1;
@@ -405,22 +484,22 @@ function moveMapUnit(key) {
     return;
   }
 
-  if (player.currentMapMp < terrainRule.cost) {
-    statusEl.textContent = `Map View: Need ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${player.currentMapMp}.`;
+  if (stack.currentMapMp < terrainRule.cost) {
+    statusEl.textContent = `Map View: Need ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${stack.currentMapMp}.`;
     return;
   }
 
-  player.x = nx;
-  player.y = ny;
-  player.currentMapMp -= terrainRule.cost;
-  statusEl.textContent = `Map View: Dawnforged moved to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${player.currentMapMp}.`;
+  stack.x = nx;
+  stack.y = ny;
+  stack.currentMapMp -= terrainRule.cost;
+  statusEl.textContent = `Map View: Dawnforged stack moved to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${stack.currentMapMp}.`;
 
-  if (player.x === state.units.enemy.x && player.y === state.units.enemy.y) {
+  if (stack.x === state.stacks.enemy.x && stack.y === state.stacks.enemy.y) {
     startCombat("player");
     return;
   }
 
-  if (player.currentMapMp <= 0) {
+  if (stack.currentMapMp <= 0) {
     statusEl.textContent += " No MP left, end your turn.";
   }
 
@@ -428,7 +507,58 @@ function moveMapUnit(key) {
   draw();
 }
 
-function moveCombatUnit(key) {
+function enemyMapTurn() {
+  if (state.mode !== "map" || state.turn !== "enemy" || state.gameOver) {
+    return;
+  }
+
+  const enemy = state.stacks.enemy;
+  const player = state.stacks.player;
+  let movedAny = false;
+
+  while (enemy.currentMapMp > 0) {
+    const options = getMoveOptions(enemy, player);
+    let selected = null;
+
+    for (const option of options) {
+      if (!inBounds(option.x, option.y, GRID_SIZE)) continue;
+
+      const terrainRule = getMapTerrainRule(getMapTerrainAt(option.x, option.y));
+      if (!terrainRule.passable || terrainRule.cost > enemy.currentMapMp) {
+        continue;
+      }
+
+      selected = { ...option, cost: terrainRule.cost };
+      break;
+    }
+
+    if (!selected) break;
+
+    enemy.x = selected.x;
+    enemy.y = selected.y;
+    enemy.currentMapMp -= selected.cost;
+    movedAny = true;
+
+    if (enemy.x === player.x && enemy.y === player.y) {
+      startCombat("enemy");
+      return;
+    }
+  }
+
+  state.turn = "player";
+  state.stacks.player.currentMapMp = state.stacks.player.maxMapMp;
+
+  if (movedAny) {
+    statusEl.textContent = `Map View: Ironclad stack moved to (${enemy.x}, ${enemy.y}). Your map turn.`;
+  } else {
+    statusEl.textContent = "Map View: Ironclad holds position due to terrain/MP limits. Your map turn.";
+  }
+
+  updateControls();
+  draw();
+}
+
+function moveCombatActiveUnit(key) {
   if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
     return;
   }
@@ -436,12 +566,20 @@ function moveCombatUnit(key) {
     return;
   }
 
-  const playerPos = state.combat.player;
-  const enemyPos = state.combat.enemy;
-  const playerUnit = state.units.player;
+  const active = getActivePlayerUnit();
+  if (!active) {
+    statusEl.textContent = "Combat View: No active unit available.";
+    return;
+  }
 
-  let nx = playerPos.x;
-  let ny = playerPos.y;
+  if (active.currentCombatMp <= 0) {
+    statusEl.textContent = `Combat View: ${active.id} has no MP. Press A to cycle units or End Turn.`;
+    updateControls();
+    return;
+  }
+
+  let nx = active.x;
+  let ny = active.y;
 
   if (key === "ArrowUp") ny -= 1;
   if (key === "ArrowDown") ny += 1;
@@ -453,8 +591,8 @@ function moveCombatUnit(key) {
     return;
   }
 
-  if (nx === enemyPos.x && ny === enemyPos.y) {
-    statusEl.textContent = "Combat View: Occupied tile. Move adjacent, then attack.";
+  if (isOccupied(nx, ny, active.id)) {
+    statusEl.textContent = "Combat View: Tile occupied by another unit.";
     return;
   }
 
@@ -466,89 +604,124 @@ function moveCombatUnit(key) {
     return;
   }
 
-  if (playerUnit.currentCombatMp < terrainRule.cost) {
-    statusEl.textContent = `Combat View: Need ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${playerUnit.currentCombatMp}.`;
+  if (active.currentCombatMp < terrainRule.cost) {
+    statusEl.textContent = `Combat View: ${active.id} needs ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
     return;
   }
 
-  playerPos.x = nx;
-  playerPos.y = ny;
-  playerUnit.currentCombatMp -= terrainRule.cost;
+  active.x = nx;
+  active.y = ny;
+  active.currentCombatMp -= terrainRule.cost;
 
-  statusEl.textContent = `Combat View: Dawnforged repositions to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${playerUnit.currentCombatMp}.`;
+  statusEl.textContent = `Combat View: ${active.id} moved to (${nx}, ${ny}) on ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
   updateControls();
   draw();
 }
 
-function enemyMapTurn() {
-  if (state.mode !== "map" || state.turn !== "enemy" || state.gameOver) {
+function playerCombatAttack() {
+  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
     return;
   }
 
-  const enemy = state.units.enemy;
-  const player = state.units.player;
-  let movedAny = false;
-
-  while (enemy.currentMapMp > 0) {
-    const options = getEnemyMoveOptions(enemy, player);
-    let selected = null;
-
-    for (const option of options) {
-      if (!inBounds(option.x, option.y, GRID_SIZE)) {
-        continue;
-      }
-
-      const terrainRule = getMapTerrainRule(getMapTerrainAt(option.x, option.y));
-      if (!terrainRule.passable || terrainRule.cost > enemy.currentMapMp) {
-        continue;
-      }
-
-      selected = { ...option, terrainRule };
-      break;
-    }
-
-    if (!selected) {
-      break;
-    }
-
-    enemy.x = selected.x;
-    enemy.y = selected.y;
-    enemy.currentMapMp -= selected.terrainRule.cost;
-    movedAny = true;
-
-    if (enemy.x === player.x && enemy.y === player.y) {
-      startCombat("enemy");
-      return;
-    }
+  const active = getActivePlayerUnit();
+  if (!active) {
+    return;
   }
 
-  state.turn = "player";
-  state.units.player.currentMapMp = state.units.player.maxMapMp;
+  const targets = adjacentTargets(active, "enemy");
+  if (targets.length === 0) {
+    statusEl.textContent = "Combat View: Move adjacent to an enemy unit to attack.";
+    updateControls();
+    return;
+  }
 
-  if (movedAny) {
-    statusEl.textContent = `Map View: Ironclad moved to (${enemy.x}, ${enemy.y}). Your map turn.`;
-  } else {
-    statusEl.textContent = "Map View: Ironclad holds position due to terrain/MP limits. Your map turn.";
+  const defender = targets[0];
+  const result = resolveAttack("player", active, "enemy", defender);
+  active.currentCombatMp = 0;
+
+  statusEl.textContent = `Combat View: ${active.id} attacked ${defender.id} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+
+  if (!checkCombatEnd()) {
+    const next = getActivePlayerUnit();
+    if (!next) {
+      state.combatTurn = "enemy";
+      resetCombatMp("enemy");
+      scheduleAction(120, enemyCombatTurn);
+    }
   }
 
   updateControls();
   draw();
 }
 
-function getEnemyMoveOptions(enemy, player) {
-  const dx = player.x - enemy.x;
-  const dy = player.y - enemy.y;
-  const options = [];
-
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    if (dx !== 0) options.push({ x: enemy.x + Math.sign(dx), y: enemy.y });
-    if (dy !== 0) options.push({ x: enemy.x, y: enemy.y + Math.sign(dy) });
-  } else {
-    if (dy !== 0) options.push({ x: enemy.x, y: enemy.y + Math.sign(dy) });
-    if (dx !== 0) options.push({ x: enemy.x + Math.sign(dx), y: enemy.y });
+function enemyCombatTurn() {
+  if (state.mode !== "combat" || state.combatTurn !== "enemy" || state.gameOver) {
+    return;
   }
 
-  return options;
+  resetCombatMp("enemy");
+  const enemyUnits = [...getAliveUnits("enemy")];
+
+  for (const unit of enemyUnits) {
+    if (!unit.alive || state.gameOver) continue;
+
+    while (unit.currentCombatMp > 0) {
+      const targets = adjacentTargets(unit, "player");
+      if (targets.length > 0) {
+        const defender = targets[0];
+        const result = resolveAttack("enemy", unit, "player", defender);
+        unit.currentCombatMp = 0;
+        statusEl.textContent = `Combat View: ${unit.id} attacked ${defender.id} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+
+        if (checkCombatEnd()) {
+          updateControls();
+          draw();
+          return;
+        }
+        break;
+      }
+
+      const target = nearestTarget(unit, getAliveUnits("player"));
+      if (!target) break;
+
+      const options = getMoveOptions(unit, target);
+      let moved = false;
+
+      for (const option of options) {
+        if (!inBounds(option.x, option.y, COMBAT_GRID_SIZE)) continue;
+        if (isOccupied(option.x, option.y, unit.id)) continue;
+
+        const terrainRule = getCombatTerrainRule(getCombatTerrainAt(option.x, option.y));
+        if (!terrainRule.passable || terrainRule.cost > unit.currentCombatMp) {
+          continue;
+        }
+
+        unit.x = option.x;
+        unit.y = option.y;
+        unit.currentCombatMp -= terrainRule.cost;
+        moved = true;
+        break;
+      }
+
+      if (!moved) {
+        unit.currentCombatMp = 0;
+      }
+    }
+  }
+
+  if (state.gameOver) {
+    updateControls();
+    draw();
+    return;
+  }
+
+  state.combatTurn = "player";
+  resetCombatMp("player");
+  const first = getAliveUnits("player")[0];
+  state.combat.activePlayerUnitId = first ? first.id : null;
+  statusEl.textContent = "Combat View: Your combat turn. Use A to cycle units.";
+  updateControls();
+  draw();
 }
 
 function endTurn() {
@@ -560,11 +733,12 @@ function endTurn() {
     if (state.combatTurn !== "player") {
       return;
     }
+
     state.combatTurn = "enemy";
-    state.units.enemy.currentCombatMp = state.units.enemy.maxCombatMp;
-    statusEl.textContent = "Combat View: You ended your combat turn.";
+    statusEl.textContent = "Combat View: You ended your turn.";
     updateControls();
-    enemyCombatTurn();
+    draw();
+    scheduleAction(120, enemyCombatTurn);
     return;
   }
 
@@ -573,18 +747,11 @@ function endTurn() {
   }
 
   state.turn = "enemy";
-  state.units.enemy.currentMapMp = state.units.enemy.maxMapMp;
+  state.stacks.enemy.currentMapMp = state.stacks.enemy.maxMapMp;
   statusEl.textContent = "Map View: Ironclad is taking a map turn...";
   updateControls();
   draw();
   scheduleAction(350, enemyMapTurn);
-}
-
-function resetGame() {
-  state = initialState();
-  statusEl.textContent = "Map View: Use arrow keys to move Dawnforged. Terrain costs MP and water is impassable.";
-  updateControls();
-  draw();
 }
 
 function drawMapGrid() {
@@ -613,37 +780,70 @@ function drawCombatGrid() {
   }
 }
 
-function drawUnitAtGrid(unit, x, y, tileSize, label) {
-  if (unit.hp <= 0) return;
-  const cx = x * tileSize + tileSize / 2;
-  const cy = y * tileSize + tileSize / 2;
+function drawStackToken(stack, baseLabel) {
+  const count = getStackCount(baseLabel === "D" ? "player" : "enemy");
+  if (count <= 0) return;
 
-  ctx.fillStyle = unit.color;
+  const cx = stack.x * TILE_SIZE + TILE_SIZE / 2;
+  const cy = stack.y * TILE_SIZE + TILE_SIZE / 2;
+
+  ctx.fillStyle = stack.color;
   ctx.beginPath();
-  ctx.arc(cx, cy, tileSize * 0.28, 0, Math.PI * 2);
+  ctx.arc(cx, cy, TILE_SIZE * 0.31, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 14px sans-serif";
+  ctx.font = "bold 18px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(label, cx, cy + 5);
+  ctx.fillText(`${baseLabel}${toSubscript(count)}`, cx, cy + 6);
+}
+
+function drawCombatUnits() {
+  const active = getActivePlayerUnit();
+
+  const drawSide = (side, color, labelPrefix) => {
+    for (const unit of getAliveUnits(side)) {
+      const cx = unit.x * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+      const cy = unit.y * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.arc(cx, cy, COMBAT_TILE_SIZE * 0.24, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (active && side === "player" && unit.id === active.id) {
+        ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 12px sans-serif";
+      ctx.textAlign = "center";
+      const index = unit.id.replace(/\D/g, "");
+      ctx.fillText(`${labelPrefix}${index}`, cx, cy + 4);
+    }
+  };
+
+  drawSide("player", state.stacks.player.color, "D");
+  drawSide("enemy", state.stacks.enemy.color, "I");
 }
 
 function drawMapView() {
   drawMapGrid();
-  drawUnitAtGrid(state.units.player, state.units.player.x, state.units.player.y, TILE_SIZE, "D");
-  drawUnitAtGrid(state.units.enemy, state.units.enemy.x, state.units.enemy.y, TILE_SIZE, "I");
+  drawStackToken(state.stacks.player, "D");
+  drawStackToken(state.stacks.enemy, "I");
 }
 
 function drawCombatView() {
   drawCombatGrid();
-  drawUnitAtGrid(state.units.player, state.combat.player.x, state.combat.player.y, COMBAT_TILE_SIZE, "D");
-  drawUnitAtGrid(state.units.enemy, state.combat.enemy.x, state.combat.enemy.y, COMBAT_TILE_SIZE, "I");
+  drawCombatUnits();
 
   ctx.fillStyle = "#1f2a1f";
   ctx.font = "bold 18px sans-serif";
   ctx.textAlign = "center";
-  ctx.fillText(`Dawnforged HP: ${state.units.player.hp} | Ironclad HP: ${state.units.enemy.hp}`, board.width / 2, 26);
+  ctx.fillText(`Dawnforged: ${getStackCount("player")} | Ironclad: ${getStackCount("enemy")}`, board.width / 2, 26);
 }
 
 function draw() {
@@ -656,29 +856,40 @@ function draw() {
 }
 
 function renderGameToText() {
+  const active = getActivePlayerUnit();
   const payload = {
     coordinateSystem: "origin=(0,0) at top-left; +x right, +y down; integer tile coordinates",
     mode: state.mode,
     turn: state.turn,
     combatTurn: state.combatTurn,
     gameOver: state.gameOver,
-    player: {
-      race: state.units.player.race,
-      x: state.mode === "map" ? state.units.player.x : state.combat?.player?.x,
-      y: state.mode === "map" ? state.units.player.y : state.combat?.player?.y,
-      hp: state.units.player.hp,
-      mapMp: state.units.player.currentMapMp,
-      combatMp: state.units.player.currentCombatMp
+    stacks: {
+      player: {
+        race: state.stacks.player.race,
+        count: getStackCount("player"),
+        mapPos: { x: state.stacks.player.x, y: state.stacks.player.y },
+        mapMp: state.stacks.player.currentMapMp
+      },
+      enemy: {
+        race: state.stacks.enemy.race,
+        count: getStackCount("enemy"),
+        mapPos: { x: state.stacks.enemy.x, y: state.stacks.enemy.y },
+        mapMp: state.stacks.enemy.currentMapMp
+      }
     },
-    enemy: {
-      race: state.units.enemy.race,
-      x: state.mode === "map" ? state.units.enemy.x : state.combat?.enemy?.x,
-      y: state.mode === "map" ? state.units.enemy.y : state.combat?.enemy?.y,
-      hp: state.units.enemy.hp,
-      mapMp: state.units.enemy.currentMapMp,
-      combatMp: state.units.enemy.currentCombatMp
-    },
-    adjacentInCombat: areCombatantsAdjacent()
+    activePlayerUnitId: active ? active.id : null,
+    combatUnits: state.mode === "combat"
+      ? ["player", "enemy"].flatMap((side) =>
+          getAliveUnits(side).map((unit) => ({
+            id: unit.id,
+            side,
+            x: unit.x,
+            y: unit.y,
+            mp: unit.currentCombatMp,
+            maxMp: unit.maxCombatMp
+          }))
+        )
+      : []
   };
 
   return JSON.stringify(payload);
@@ -691,6 +902,15 @@ window.advanceTime = (ms) => {
   draw();
   return renderGameToText();
 };
+
+function resetGame() {
+  timelineToken += 1;
+  pendingActions.length = 0;
+  state = initialState();
+  statusEl.textContent = `Map View: Stack sizes are random (1-8). Move with arrows. Stacks are shown as subscripts (D${toSubscript(getStackCount("player"))}, I${toSubscript(getStackCount("enemy"))}).`;
+  updateControls();
+  draw();
+}
 
 document.addEventListener("keydown", (event) => {
   if (event.code === "Enter") {
@@ -709,10 +929,15 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
+  if (event.code === "KeyA" && state.mode === "combat" && state.combatTurn === "player") {
+    cycleActivePlayerUnit();
+    return;
+  }
+
   if (state.mode === "map") {
-    moveMapUnit(event.key);
+    moveMapStack(event.key);
   } else {
-    moveCombatUnit(event.key);
+    moveCombatActiveUnit(event.key);
   }
 });
 
