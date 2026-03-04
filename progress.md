@@ -203,3 +203,52 @@ Validation:
   - `output/web-game/combat-log-dom/full.png`
   - `output/web-game/combat-log-dom/state.json`
   - `output/web-game/combat-log-dom/log.txt`
+
+- Added Demon Horde race integration in `game.js`.
+  - Race selectable in setup and map runtime (`RACE_OPTIONS` already includes `demon-horde`).
+  - Added demon unit archetype generation path with random per-unit assignment + random stats at stack creation:
+    - Imp, Gog, Hell Hound, Succubus, Incubus, Arch Fiend.
+  - Added demon unit metadata to runtime units (`unitRaceId`, `unitClass`, `loadout`, `archetypeId`) and propagated `unitRaceId` into `render_game_to_text` payload.
+  - Added Demon Horde art rendering paths:
+    - Setup portrait (`drawDemonHordeArt`) with fiery red-field demon scene.
+    - Map token mini-art (`drawDemonTokenArt`).
+  - Added demon combat sprite renderer/caching and hooked combat draw path to route race-specific sprites for both Centaur and Demon units.
+
+- Added art preview assets for approval flow:
+  - `art/demon_unit_sprite_preview_homm3.html` (includes all 6 demon unit sprites + race background + map token).
+  - `art/capture_demon_screenshots.mjs` (deterministic Playwright capture script for demon screenshots).
+
+- Validation:
+  - Unit tests: `npm test` passing (44/44).
+  - Required skill Playwright client run (after changes):
+    - `output/web-game/demon-horde-skill-smoke/shot-0.png`
+    - `output/web-game/demon-horde-skill-smoke/state-0.json`
+    - No `errors-*.json` found.
+  - Additional deterministic screenshot capture:
+    - `output/web-game/demon-horde-art/demon-horde-units-and-backgrounds.png`
+    - `output/web-game/demon-horde-art/demon-horde-setup-screen.png`
+    - `output/web-game/demon-horde-art/demon-horde-map-screen.png`
+    - `output/web-game/demon-horde-art/demon-horde-combat-screen.png`
+    - `output/web-game/demon-horde-art/state.json`
+
+TODO / follow-ups:
+- If user wants more detail density, replace procedural demon sprite painters with external PNG sheets while preserving current race/archetype draw routing.
+- If user wants guaranteed in-combat display of all six demon archetypes at once, add a debug roster mode that seeds one of each archetype for preview battles.
+
+- Demon sprite readability tuning pass per feedback:
+  - Hell Hound silhouette updated to a clear quadruped dog profile (elongated body, muzzle/snout, four legs, tail).
+  - Imp + Gog scaled down noticeably relative to other demon units and given smaller wing shapes.
+  - Incubus reworked as wingless djinni-style demon with a swirling fire-vortex lower body.
+  - Mirrored the same draw updates in both runtime (`game.js`) and approval preview page (`art/demon_unit_sprite_preview_homm3.html`).
+
+Validation for this tuning pass:
+- Unit tests: `npm test` passing (44/44).
+- Required skill Playwright client run:
+  - `output/web-game/demon-horde-size-tuning-skill/shot-0.png`
+  - `output/web-game/demon-horde-size-tuning-skill/state-0.json`
+  - No `errors-*.json` found.
+- Updated approval screenshots regenerated:
+  - `output/web-game/demon-horde-art/demon-horde-units-and-backgrounds.png`
+  - `output/web-game/demon-horde-art/demon-horde-setup-screen.png`
+  - `output/web-game/demon-horde-art/demon-horde-map-screen.png`
+  - `output/web-game/demon-horde-art/demon-horde-combat-screen.png`

@@ -13,6 +13,8 @@ const RACE_PREVIEW_HEIGHT = 170;
 const MAP_ART_SIZE = 64;
 const CENTAUR_COMBAT_SPRITE_NATIVE_WIDTH = 140;
 const CENTAUR_COMBAT_SPRITE_NATIVE_HEIGHT = 110;
+const DEMON_COMBAT_SPRITE_NATIVE_WIDTH = 140;
+const DEMON_COMBAT_SPRITE_NATIVE_HEIGHT = 110;
 
 const MAP_TERRAIN_RULES = {
   plains: { label: "Plains", cost: 1, passable: true, color: "#d8e2c5" },
@@ -44,6 +46,7 @@ const SUBSCRIPT_DIGITS = {
 const RANDOM_RACE_ID = "random";
 const RACE_OPTIONS = [
   { id: "centaur-clans", name: "Centaur Clans", token: "C", color: "#7d633c", artKey: "centaur-archer" },
+  { id: "demon-horde", name: "Demon Horde", token: "H", color: "#8b2f26", artKey: "demon-horde" },
   { id: "dawnforged", name: "Dawnforged", token: "D", color: "#3b7a57" },
   { id: "ironclad", name: "Ironclad", token: "I", color: "#7f2f2f" },
   { id: "sylvan", name: "Sylvan", token: "S", color: "#2f6e49" },
@@ -111,6 +114,93 @@ const CENTAUR_UNIT_ARCHETYPES = [
   }
 ];
 
+const DEMON_UNIT_ARCHETYPES = [
+  {
+    id: "imp",
+    name: "Imp",
+    loadout: "Hooves + Wings + Horns",
+    coatColor: "#7c5742",
+    statRanges: {
+      hp: [12, 20],
+      attack: [6, 14],
+      damage: [3, 10],
+      armor: [1, 6],
+      evasiveness: [11, 19],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "gog",
+    name: "Gog",
+    loadout: "Firebody + Fireball Throw",
+    coatColor: "#b4472e",
+    statRanges: {
+      hp: [14, 22],
+      attack: [9, 17],
+      damage: [7, 16],
+      armor: [2, 8],
+      evasiveness: [8, 15],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "hell-hound",
+    name: "Hell Hound",
+    loadout: "Cerberus-like Demon Dog",
+    coatColor: "#59352a",
+    statRanges: {
+      hp: [18, 28],
+      attack: [10, 18],
+      damage: [8, 17],
+      armor: [4, 12],
+      evasiveness: [7, 13],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "succubus",
+    name: "Succubus",
+    loadout: "Winged Demon",
+    coatColor: "#8f4b59",
+    statRanges: {
+      hp: [15, 24],
+      attack: [10, 17],
+      damage: [6, 14],
+      armor: [3, 10],
+      evasiveness: [10, 18],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "incubus",
+    name: "Incubus",
+    loadout: "Fire Djinni Demon",
+    coatColor: "#9a5137",
+    statRanges: {
+      hp: [18, 27],
+      attack: [11, 19],
+      damage: [8, 17],
+      armor: [4, 11],
+      evasiveness: [8, 16],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "arch-fiend",
+    name: "Arch Fiend",
+    loadout: "Battle Axe + Claws + Black Plate",
+    coatColor: "#aa2f23",
+    statRanges: {
+      hp: [22, 30],
+      attack: [13, 20],
+      damage: [11, 20],
+      armor: [10, 20],
+      evasiveness: [5, 12],
+      combatMp: [1, 2]
+    }
+  }
+];
+
 const CENTAUR_COMBAT_SPRITE_LOOKUP = {
   recon: {
     horse: "#8f6746",
@@ -143,6 +233,57 @@ const CENTAUR_COMBAT_SPRITE_LOOKUP = {
     armor: "#88928b",
     mane: "#f1eee6",
     weapon: "poleaxe"
+  }
+};
+
+const DEMON_COMBAT_SPRITE_LOOKUP = {
+  imp: {
+    body: "#7c5742",
+    shade: "#4f3527",
+    accent: "#d2b083",
+    fire: "#f08a39",
+    wing: "#74423a",
+    weapon: "claws"
+  },
+  gog: {
+    body: "#b4472e",
+    shade: "#7d2b1c",
+    accent: "#f0c184",
+    fire: "#ff6f2a",
+    wing: "#8b2f23",
+    weapon: "fireball"
+  },
+  "hell-hound": {
+    body: "#654034",
+    shade: "#3f261f",
+    accent: "#d19e74",
+    fire: "#f09f33",
+    wing: "#5f2f2f",
+    weapon: "fangs"
+  },
+  succubus: {
+    body: "#8f4b59",
+    shade: "#5d2d39",
+    accent: "#f2c7b1",
+    fire: "#ff8b5c",
+    wing: "#6f3546",
+    weapon: "flight"
+  },
+  incubus: {
+    body: "#9a5137",
+    shade: "#5f3223",
+    accent: "#ebbb96",
+    fire: "#ff7b37",
+    wing: "#7f3a2b",
+    weapon: "djinni-fire"
+  },
+  "arch-fiend": {
+    body: "#aa2f23",
+    shade: "#661811",
+    accent: "#f1c3a6",
+    fire: "#ff5f22",
+    wing: "#2c2f33",
+    weapon: "battleaxe"
   }
 };
 
@@ -183,6 +324,7 @@ let selectedRaces = {
 let hoveredEntity = null;
 const raceArtCache = new Map();
 const centaurCombatSpriteCache = new Map();
+const demonCombatSpriteCache = new Map();
 
 function getRaceById(raceId) {
   return RACE_OPTIONS.find((race) => race.id === raceId) || RACE_OPTIONS[0];
@@ -247,6 +389,10 @@ function pickRandomCentaurArchetype() {
   return CENTAUR_UNIT_ARCHETYPES[randomInt(0, CENTAUR_UNIT_ARCHETYPES.length - 1)];
 }
 
+function pickRandomDemonArchetype() {
+  return DEMON_UNIT_ARCHETYPES[randomInt(0, DEMON_UNIT_ARCHETYPES.length - 1)];
+}
+
 function createCentaurUnit(side, race, index) {
   const archetype = pickRandomCentaurArchetype();
   const maxHp = rollFromRange(archetype.statRanges.hp);
@@ -256,6 +402,36 @@ function createCentaurUnit(side, race, index) {
     id: `${side[0].toUpperCase()}${index + 1}`,
     label: `${race.token}${index + 1}`,
     side,
+    unitRaceId: race.id,
+    alive: true,
+    unitClass: archetype.name,
+    loadout: archetype.loadout,
+    archetypeId: archetype.id,
+    coatColor: archetype.coatColor,
+    hp: maxHp,
+    maxHp,
+    attack: rollFromRange(archetype.statRanges.attack),
+    damage: rollFromRange(archetype.statRanges.damage),
+    armor,
+    maxArmor: armor,
+    evasiveness: rollFromRange(archetype.statRanges.evasiveness),
+    maxCombatMp: rollFromRange(archetype.statRanges.combatMp),
+    currentCombatMp: 0,
+    x: null,
+    y: null
+  };
+}
+
+function createDemonUnit(side, race, index) {
+  const archetype = pickRandomDemonArchetype();
+  const maxHp = rollFromRange(archetype.statRanges.hp);
+  const armor = rollFromRange(archetype.statRanges.armor);
+
+  return {
+    id: `${side[0].toUpperCase()}${index + 1}`,
+    label: `${race.token}${index + 1}`,
+    side,
+    unitRaceId: race.id,
     alive: true,
     unitClass: archetype.name,
     loadout: archetype.loadout,
@@ -282,6 +458,7 @@ function createDefaultUnit(side, race, index) {
     id: `${side[0].toUpperCase()}${index + 1}`,
     label: `${race.token}${index + 1}`,
     side,
+    unitRaceId: race.id,
     alive: true,
     hp: maxHp,
     maxHp,
@@ -304,6 +481,8 @@ function createStack(side, race, x, y) {
   for (let i = 0; i < count; i += 1) {
     if (race.id === "centaur-clans") {
       units.push(createCentaurUnit(side, race, i));
+    } else if (race.id === "demon-horde") {
+      units.push(createDemonUnit(side, race, i));
     } else {
       units.push(createDefaultUnit(side, race, i));
     }
@@ -659,6 +838,174 @@ function drawCentaurTokenArt(ctx, size) {
   ctx.fill();
 }
 
+function drawDemonHordeArt(ctx, width, height) {
+  const frame = Math.max(2, Math.floor(width * 0.05));
+  const innerX = frame;
+  const innerY = frame;
+  const innerW = width - frame * 2;
+  const innerH = height - frame * 2;
+  const horizonY = innerY + innerH * 0.6;
+
+  const sky = ctx.createLinearGradient(0, innerY, 0, innerY + innerH);
+  sky.addColorStop(0, "#2e0507");
+  sky.addColorStop(0.34, "#5b1212");
+  sky.addColorStop(0.68, "#8f2418");
+  sky.addColorStop(1, "#3f120e");
+  ctx.fillStyle = sky;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  const infernoGlow = ctx.createRadialGradient(
+    innerX + innerW * 0.42,
+    innerY + innerH * 0.32,
+    3,
+    innerX + innerW * 0.42,
+    innerY + innerH * 0.32,
+    innerW * 0.45
+  );
+  infernoGlow.addColorStop(0, "rgba(255, 151, 86, 0.6)");
+  infernoGlow.addColorStop(1, "rgba(255, 151, 86, 0)");
+  ctx.fillStyle = infernoGlow;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  for (let i = 0; i < 26; i += 1) {
+    const px = innerX + ((i + 0.4) * innerW) / 26;
+    const baseY = horizonY + innerH * (0.02 + (i % 4) * 0.01);
+    const flameHeight = innerH * (0.11 + (i % 5) * 0.018);
+    ctx.fillStyle = i % 2 === 0 ? "rgba(255, 110, 34, 0.48)" : "rgba(255, 169, 92, 0.35)";
+    ctx.beginPath();
+    ctx.moveTo(px, baseY);
+    ctx.lineTo(px - innerW * 0.012, baseY + flameHeight * 0.85);
+    ctx.lineTo(px + innerW * 0.012, baseY + flameHeight * 0.85);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  const ridgeGradient = ctx.createLinearGradient(0, horizonY - innerH * 0.03, 0, innerY + innerH);
+  ridgeGradient.addColorStop(0, "#4c1711");
+  ridgeGradient.addColorStop(1, "#1f090a");
+  ctx.fillStyle = ridgeGradient;
+  ctx.beginPath();
+  ctx.moveTo(innerX, horizonY + innerH * 0.02);
+  ctx.lineTo(innerX + innerW * 0.14, horizonY - innerH * 0.05);
+  ctx.lineTo(innerX + innerW * 0.29, horizonY + innerH * 0.03);
+  ctx.lineTo(innerX + innerW * 0.44, horizonY - innerH * 0.07);
+  ctx.lineTo(innerX + innerW * 0.61, horizonY + innerH * 0.02);
+  ctx.lineTo(innerX + innerW * 0.79, horizonY - innerH * 0.06);
+  ctx.lineTo(innerX + innerW, horizonY + innerH * 0.03);
+  ctx.lineTo(innerX + innerW, innerY + innerH);
+  ctx.lineTo(innerX, innerY + innerH);
+  ctx.closePath();
+  ctx.fill();
+
+  const spriteLook = DEMON_COMBAT_SPRITE_LOOKUP["arch-fiend"];
+  const spriteCanvas = createArtCanvas(220, 170);
+  const spriteCtx = spriteCanvas.getContext("2d");
+  drawDemonCombatSprite(spriteCtx, spriteLook, "player", spriteCanvas.width, spriteCanvas.height);
+
+  const spriteW = innerW * 0.62;
+  const spriteH = innerH * 0.88;
+  const spriteX = innerX + innerW * 0.56 - spriteW * 0.5;
+  const spriteY = innerY + innerH * 0.65 - spriteH * 0.54;
+  ctx.drawImage(spriteCanvas, spriteX, spriteY, spriteW, spriteH);
+
+  const badgeW = innerW * 0.28;
+  const badgeH = innerH * 0.2;
+  const badgeX = innerX + innerW * 0.04;
+  const badgeY = innerY + innerH * 0.72;
+  const badge = ctx.createLinearGradient(badgeX, badgeY, badgeX, badgeY + badgeH);
+  badge.addColorStop(0, "rgba(37, 8, 10, 0.76)");
+  badge.addColorStop(1, "rgba(16, 2, 4, 0.9)");
+  ctx.fillStyle = badge;
+  ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+  ctx.strokeStyle = "rgba(246, 184, 111, 0.55)";
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+  ctx.fillStyle = "#f2d2a0";
+  ctx.font = `bold ${Math.max(11, Math.floor(innerH * 0.09))}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Demon", badgeX + badgeW * 0.5, badgeY + badgeH * 0.5);
+  ctx.textBaseline = "alphabetic";
+
+  const vignette = ctx.createRadialGradient(width * 0.5, height * 0.5, width * 0.25, width * 0.5, height * 0.5, width * 0.9);
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.45)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  drawFrameBorder(ctx, width, height);
+}
+
+function drawDemonTokenArt(ctx, size) {
+  const sky = ctx.createLinearGradient(0, 0, 0, size);
+  sky.addColorStop(0, "#6f1716");
+  sky.addColorStop(1, "#2c0909");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.fillStyle = "#4b1712";
+  ctx.fillRect(0, size * 0.62, size, size * 0.38);
+
+  const centerX = size * 0.5;
+  const centerY = size * 0.55;
+  const scale = size / 64;
+
+  ctx.fillStyle = "#1a090b";
+  ctx.beginPath();
+  ctx.ellipse(centerX, centerY + 7 * scale, 18 * scale, 8 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ab2e22";
+  ctx.beginPath();
+  ctx.moveTo(centerX - 9 * scale, centerY + 12 * scale);
+  ctx.lineTo(centerX - 15 * scale, centerY - 3 * scale);
+  ctx.lineTo(centerX - 10 * scale, centerY - 13 * scale);
+  ctx.lineTo(centerX - 2 * scale, centerY - 3 * scale);
+  ctx.lineTo(centerX + 4 * scale, centerY + 11 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(centerX + 8 * scale, centerY + 11 * scale);
+  ctx.lineTo(centerX + 2 * scale, centerY - 3 * scale);
+  ctx.lineTo(centerX + 8 * scale, centerY - 13 * scale);
+  ctx.lineTo(centerX + 16 * scale, centerY - 2 * scale);
+  ctx.lineTo(centerX + 14 * scale, centerY + 11 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#601814";
+  ctx.beginPath();
+  ctx.moveTo(centerX - 1 * scale, centerY - 16 * scale);
+  ctx.lineTo(centerX - 6 * scale, centerY - 27 * scale);
+  ctx.lineTo(centerX - 2 * scale, centerY - 26 * scale);
+  ctx.lineTo(centerX + 1 * scale, centerY - 20 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(centerX + 3 * scale, centerY - 15 * scale);
+  ctx.lineTo(centerX + 9 * scale, centerY - 26 * scale);
+  ctx.lineTo(centerX + 12 * scale, centerY - 24 * scale);
+  ctx.lineTo(centerX + 7 * scale, centerY - 17 * scale);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#f2d8b2";
+  ctx.beginPath();
+  ctx.arc(centerX + 1 * scale, centerY - 7 * scale, 4.8 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  const flame = ctx.createRadialGradient(centerX + 17 * scale, centerY - 4 * scale, 1, centerX + 17 * scale, centerY - 4 * scale, 11 * scale);
+  flame.addColorStop(0, "rgba(255, 208, 118, 0.95)");
+  flame.addColorStop(0.6, "rgba(255, 118, 48, 0.72)");
+  flame.addColorStop(1, "rgba(255, 82, 33, 0)");
+  ctx.fillStyle = flame;
+  ctx.beginPath();
+  ctx.ellipse(centerX + 17 * scale, centerY - 4 * scale, 8 * scale, 10 * scale, 0.2, 0, Math.PI * 2);
+  ctx.fill();
+}
+
 function drawGenericRaceArt(ctx, width, height, race) {
   const frame = Math.max(2, Math.floor(width * 0.05));
   const innerX = frame;
@@ -730,6 +1077,14 @@ function getCentaurCombatLook(unit) {
     return fallback;
   }
   return CENTAUR_COMBAT_SPRITE_LOOKUP[unit.archetypeId] || fallback;
+}
+
+function getDemonCombatLook(unit) {
+  const fallback = DEMON_COMBAT_SPRITE_LOOKUP.imp;
+  if (!unit?.archetypeId) {
+    return fallback;
+  }
+  return DEMON_COMBAT_SPRITE_LOOKUP[unit.archetypeId] || fallback;
 }
 
 function drawCentaurCombatSprite(drawCtx, look, side, width, height) {
@@ -914,6 +1269,313 @@ function drawCentaurCombatSprite(drawCtx, look, side, width, height) {
   drawCtx.fillRect(0, 0, width, height);
 }
 
+function drawDemonCombatSprite(drawCtx, look, side, width, height) {
+  const shadeTint = side === "enemy" ? "rgba(87, 21, 14, 0.18)" : "rgba(29, 14, 24, 0.1)";
+  const isHound = look.weapon === "fangs";
+  const isSmallDemon = look.weapon === "claws" || look.weapon === "fireball";
+  const isDjinni = look.weapon === "djinni-fire";
+
+  drawCtx.clearRect(0, 0, width, height);
+
+  drawCtx.fillStyle = "rgba(10, 8, 10, 0.36)";
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.5, height * 0.85, width * (isHound ? 0.33 : 0.3), height * 0.09, 0, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  if (isHound) {
+    const body = drawCtx.createLinearGradient(width * 0.24, height * 0.54, width * 0.78, height * 0.7);
+    body.addColorStop(0, look.body);
+    body.addColorStop(1, look.shade);
+    drawCtx.fillStyle = body;
+    drawCtx.beginPath();
+    drawCtx.ellipse(width * 0.5, height * 0.63, width * 0.24, height * 0.14, -0.06, 0, Math.PI * 2);
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.body;
+    drawCtx.beginPath();
+    drawCtx.ellipse(width * 0.68, height * 0.6, width * 0.11, height * 0.09, 0.04, 0, Math.PI * 2);
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.shade;
+    drawCtx.fillRect(width * 0.62, height * 0.55, width * 0.08, height * 0.08);
+
+    drawCtx.fillStyle = look.body;
+    drawCtx.beginPath();
+    drawCtx.ellipse(width * 0.77, height * 0.55, width * 0.08, height * 0.065, -0.04, 0, Math.PI * 2);
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.accent;
+    drawCtx.beginPath();
+    drawCtx.ellipse(width * 0.83, height * 0.58, width * 0.04, height * 0.028, 0, 0, Math.PI * 2);
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.shade;
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.73, height * 0.5);
+    drawCtx.lineTo(width * 0.7, height * 0.42);
+    drawCtx.lineTo(width * 0.74, height * 0.44);
+    drawCtx.closePath();
+    drawCtx.fill();
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.79, height * 0.5);
+    drawCtx.lineTo(width * 0.82, height * 0.42);
+    drawCtx.lineTo(width * 0.84, height * 0.46);
+    drawCtx.closePath();
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.shade;
+    drawCtx.fillRect(width * 0.36, height * 0.68, width * 0.045, height * 0.2);
+    drawCtx.fillRect(width * 0.47, height * 0.68, width * 0.045, height * 0.2);
+    drawCtx.fillRect(width * 0.58, height * 0.69, width * 0.045, height * 0.19);
+    drawCtx.fillRect(width * 0.67, height * 0.69, width * 0.045, height * 0.19);
+    drawCtx.fillStyle = "#1a1113";
+    drawCtx.fillRect(width * 0.35, height * 0.86, width * 0.06, height * 0.03);
+    drawCtx.fillRect(width * 0.46, height * 0.86, width * 0.06, height * 0.03);
+    drawCtx.fillRect(width * 0.57, height * 0.86, width * 0.06, height * 0.03);
+    drawCtx.fillRect(width * 0.66, height * 0.86, width * 0.06, height * 0.03);
+
+    drawCtx.strokeStyle = look.shade;
+    drawCtx.lineWidth = Math.max(2, width * 0.016);
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.28, height * 0.62);
+    drawCtx.quadraticCurveTo(width * 0.18, height * 0.52, width * 0.16, height * 0.44);
+    drawCtx.stroke();
+
+    const tailFire = drawCtx.createRadialGradient(width * 0.16, height * 0.42, 2, width * 0.16, height * 0.42, width * 0.08);
+    tailFire.addColorStop(0, "rgba(255, 229, 156, 0.92)");
+    tailFire.addColorStop(0.45, look.fire);
+    tailFire.addColorStop(1, "rgba(255, 86, 31, 0)");
+    drawCtx.fillStyle = tailFire;
+    drawCtx.beginPath();
+    drawCtx.ellipse(width * 0.16, height * 0.42, width * 0.07, height * 0.09, -0.2, 0, Math.PI * 2);
+    drawCtx.fill();
+
+    drawCtx.strokeStyle = "#d8c6a2";
+    drawCtx.lineWidth = Math.max(1.8, width * 0.012);
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.81, height * 0.58);
+    drawCtx.lineTo(width * 0.86, height * 0.61);
+    drawCtx.moveTo(width * 0.8, height * 0.6);
+    drawCtx.lineTo(width * 0.85, height * 0.63);
+    drawCtx.stroke();
+  } else {
+    const lowerTorso = drawCtx.createLinearGradient(width * 0.34, height * 0.36, width * 0.62, height * 0.74);
+    lowerTorso.addColorStop(0, look.body);
+    lowerTorso.addColorStop(1, look.shade);
+    drawCtx.fillStyle = lowerTorso;
+    drawCtx.beginPath();
+    drawCtx.ellipse(
+      width * 0.5,
+      height * (isSmallDemon ? 0.61 : 0.56),
+      width * (isSmallDemon ? 0.13 : 0.17),
+      height * (isSmallDemon ? 0.145 : 0.19),
+      0,
+      0,
+      Math.PI * 2
+    );
+    drawCtx.fill();
+
+    const chest = drawCtx.createLinearGradient(width * 0.43, height * 0.24, width * 0.54, height * 0.56);
+    chest.addColorStop(0, look.body);
+    chest.addColorStop(1, look.shade);
+    drawCtx.fillStyle = chest;
+    drawCtx.fillRect(
+      width * (isSmallDemon ? 0.452 : 0.44),
+      height * (isSmallDemon ? 0.37 : 0.29),
+      width * (isSmallDemon ? 0.096 : 0.12),
+      height * (isSmallDemon ? 0.21 : 0.27)
+    );
+
+    const headX = width * 0.5;
+    const headY = height * (isSmallDemon ? 0.3 : 0.23);
+    drawCtx.fillStyle = look.body;
+    drawCtx.beginPath();
+    drawCtx.ellipse(
+      headX,
+      headY,
+      width * (isSmallDemon ? 0.048 : 0.06),
+      height * (isSmallDemon ? 0.064 : 0.075),
+      0,
+      0,
+      Math.PI * 2
+    );
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.shade;
+    drawCtx.beginPath();
+    drawCtx.moveTo(headX - width * (isSmallDemon ? 0.026 : 0.03), headY - height * 0.04);
+    drawCtx.lineTo(headX - width * (isSmallDemon ? 0.052 : 0.06), headY - height * 0.12);
+    drawCtx.lineTo(headX - width * (isSmallDemon ? 0.018 : 0.02), headY - height * 0.11);
+    drawCtx.closePath();
+    drawCtx.fill();
+    drawCtx.beginPath();
+    drawCtx.moveTo(headX + width * (isSmallDemon ? 0.026 : 0.03), headY - height * 0.04);
+    drawCtx.lineTo(headX + width * (isSmallDemon ? 0.052 : 0.06), headY - height * 0.12);
+    drawCtx.lineTo(headX + width * (isSmallDemon ? 0.018 : 0.02), headY - height * 0.11);
+    drawCtx.closePath();
+    drawCtx.fill();
+
+    drawCtx.fillStyle = look.accent;
+    drawCtx.beginPath();
+    drawCtx.arc(headX + width * 0.012, headY - height * 0.006, width * 0.008, 0, Math.PI * 2);
+    drawCtx.fill();
+
+    if (!isDjinni) {
+      const wingColor = look.wing || look.shade;
+      drawCtx.fillStyle = wingColor;
+
+      if (isSmallDemon) {
+        drawCtx.beginPath();
+        drawCtx.moveTo(width * 0.45, height * 0.46);
+        drawCtx.lineTo(width * 0.37, height * 0.52);
+        drawCtx.lineTo(width * 0.41, height * 0.62);
+        drawCtx.lineTo(width * 0.47, height * 0.56);
+        drawCtx.closePath();
+        drawCtx.fill();
+
+        drawCtx.beginPath();
+        drawCtx.moveTo(width * 0.55, height * 0.46);
+        drawCtx.lineTo(width * 0.63, height * 0.52);
+        drawCtx.lineTo(width * 0.59, height * 0.62);
+        drawCtx.lineTo(width * 0.53, height * 0.56);
+        drawCtx.closePath();
+        drawCtx.fill();
+      } else {
+        const leftWing = drawCtx.createLinearGradient(width * 0.35, height * 0.34, width * 0.26, height * 0.67);
+        leftWing.addColorStop(0, wingColor);
+        leftWing.addColorStop(1, "rgba(24, 14, 20, 0.9)");
+        drawCtx.fillStyle = leftWing;
+        drawCtx.beginPath();
+        drawCtx.moveTo(width * 0.44, height * 0.38);
+        drawCtx.lineTo(width * 0.25, height * 0.5);
+        drawCtx.lineTo(width * 0.3, height * 0.7);
+        drawCtx.lineTo(width * 0.44, height * 0.58);
+        drawCtx.closePath();
+        drawCtx.fill();
+
+        const rightWing = drawCtx.createLinearGradient(width * 0.65, height * 0.34, width * 0.74, height * 0.67);
+        rightWing.addColorStop(0, wingColor);
+        rightWing.addColorStop(1, "rgba(24, 14, 20, 0.9)");
+        drawCtx.fillStyle = rightWing;
+        drawCtx.beginPath();
+        drawCtx.moveTo(width * 0.56, height * 0.38);
+        drawCtx.lineTo(width * 0.75, height * 0.5);
+        drawCtx.lineTo(width * 0.7, height * 0.7);
+        drawCtx.lineTo(width * 0.56, height * 0.58);
+        drawCtx.closePath();
+        drawCtx.fill();
+      }
+
+      drawCtx.fillStyle = look.shade;
+      drawCtx.fillRect(width * (isSmallDemon ? 0.445 : 0.41), height * 0.69, width * (isSmallDemon ? 0.042 : 0.05), height * 0.2);
+      drawCtx.fillRect(width * (isSmallDemon ? 0.513 : 0.5), height * 0.69, width * (isSmallDemon ? 0.042 : 0.05), height * 0.2);
+      drawCtx.fillStyle = "#1a1113";
+      drawCtx.fillRect(width * (isSmallDemon ? 0.438 : 0.4), height * 0.86, width * 0.07, height * 0.03);
+      drawCtx.fillRect(width * (isSmallDemon ? 0.505 : 0.49), height * 0.86, width * 0.07, height * 0.03);
+    } else {
+      const tail = drawCtx.createLinearGradient(width * 0.5, height * 0.56, width * 0.5, height * 0.92);
+      tail.addColorStop(0, look.body);
+      tail.addColorStop(1, "rgba(255, 106, 37, 0.22)");
+      drawCtx.fillStyle = tail;
+      drawCtx.beginPath();
+      drawCtx.moveTo(width * 0.43, height * 0.56);
+      drawCtx.quadraticCurveTo(width * 0.52, height * 0.73, width * 0.41, height * 0.9);
+      drawCtx.quadraticCurveTo(width * 0.53, height * 0.86, width * 0.57, height * 0.93);
+      drawCtx.quadraticCurveTo(width * 0.64, height * 0.74, width * 0.57, height * 0.56);
+      drawCtx.closePath();
+      drawCtx.fill();
+
+      drawCtx.strokeStyle = look.fire;
+      drawCtx.lineWidth = Math.max(2.2, width * 0.016);
+      drawCtx.beginPath();
+      drawCtx.arc(width * 0.49, height * 0.72, width * 0.125, Math.PI * 0.05, Math.PI * 1.43, false);
+      drawCtx.stroke();
+      drawCtx.beginPath();
+      drawCtx.arc(width * 0.53, height * 0.79, width * 0.095, Math.PI * 0.2, Math.PI * 1.53, false);
+      drawCtx.stroke();
+      drawCtx.beginPath();
+      drawCtx.arc(width * 0.48, height * 0.85, width * 0.067, Math.PI * 0.24, Math.PI * 1.58, false);
+      drawCtx.stroke();
+
+      const vortexGlow = drawCtx.createRadialGradient(width * 0.5, height * 0.76, 2, width * 0.5, height * 0.76, width * 0.16);
+      vortexGlow.addColorStop(0, "rgba(255, 211, 130, 0.48)");
+      vortexGlow.addColorStop(1, "rgba(255, 97, 35, 0)");
+      drawCtx.fillStyle = vortexGlow;
+      drawCtx.beginPath();
+      drawCtx.ellipse(width * 0.5, height * 0.76, width * 0.15, height * 0.16, 0, 0, Math.PI * 2);
+      drawCtx.fill();
+    }
+
+    if (look.weapon === "battleaxe") {
+      drawCtx.strokeStyle = "#3d2a24";
+      drawCtx.lineWidth = Math.max(2, width * 0.02);
+      drawCtx.beginPath();
+      drawCtx.moveTo(width * 0.57, height * 0.38);
+      drawCtx.lineTo(width * 0.76, height * 0.77);
+      drawCtx.stroke();
+
+      drawCtx.fillStyle = "#2b2f33";
+      drawCtx.beginPath();
+      drawCtx.moveTo(width * 0.55, height * 0.34);
+      drawCtx.lineTo(width * 0.67, height * 0.29);
+      drawCtx.lineTo(width * 0.7, height * 0.39);
+      drawCtx.lineTo(width * 0.59, height * 0.44);
+      drawCtx.closePath();
+      drawCtx.fill();
+
+      drawCtx.fillStyle = "rgba(26, 30, 36, 0.8)";
+      drawCtx.fillRect(width * 0.42, height * 0.34, width * 0.16, height * 0.18);
+    } else if (look.weapon === "fireball") {
+      const fireball = drawCtx.createRadialGradient(
+        width * 0.67,
+        height * 0.52,
+        2,
+        width * 0.67,
+        height * 0.52,
+        width * 0.065
+      );
+      fireball.addColorStop(0, "rgba(255, 226, 150, 0.98)");
+      fireball.addColorStop(0.5, look.fire);
+      fireball.addColorStop(1, "rgba(255, 95, 36, 0)");
+      drawCtx.fillStyle = fireball;
+      drawCtx.beginPath();
+      drawCtx.arc(width * 0.67, height * 0.52, width * 0.065, 0, Math.PI * 2);
+      drawCtx.fill();
+    } else if (look.weapon === "djinni-fire") {
+      drawCtx.strokeStyle = look.fire;
+      drawCtx.lineWidth = Math.max(2, width * 0.016);
+      drawCtx.beginPath();
+      drawCtx.moveTo(width * 0.62, height * 0.39);
+      drawCtx.bezierCurveTo(width * 0.75, height * 0.31, width * 0.8, height * 0.63, width * 0.6, height * 0.69);
+      drawCtx.stroke();
+      drawCtx.beginPath();
+      drawCtx.moveTo(width * 0.36, height * 0.58);
+      drawCtx.bezierCurveTo(width * 0.27, height * 0.7, width * 0.52, height * 0.89, width * 0.63, height * 0.74);
+      drawCtx.stroke();
+    } else if (look.weapon === "claws" || look.weapon === "flight") {
+      drawCtx.strokeStyle = "#d8c6a2";
+      drawCtx.lineWidth = Math.max(1.8, width * 0.012);
+      drawCtx.beginPath();
+      drawCtx.moveTo(width * (isSmallDemon ? 0.55 : 0.59), height * 0.43);
+      drawCtx.lineTo(width * (isSmallDemon ? 0.61 : 0.67), height * 0.48);
+      drawCtx.moveTo(width * (isSmallDemon ? 0.54 : 0.58), height * 0.46);
+      drawCtx.lineTo(width * (isSmallDemon ? 0.6 : 0.66), height * 0.52);
+      drawCtx.stroke();
+    }
+  }
+
+  const ember = drawCtx.createRadialGradient(width * 0.32, height * 0.47, 1, width * 0.32, height * 0.47, width * 0.11);
+  ember.addColorStop(0, "rgba(255, 214, 141, 0.76)");
+  ember.addColorStop(1, "rgba(255, 110, 46, 0)");
+  drawCtx.fillStyle = ember;
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.32, height * 0.47, width * 0.1, height * 0.12, 0, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  drawCtx.fillStyle = shadeTint;
+  drawCtx.fillRect(0, 0, width, height);
+}
+
 function getCentaurCombatSpriteCanvas(unit, side) {
   const look = getCentaurCombatLook(unit);
   const key = `${unit.archetypeId || "recon"}:${side}`;
@@ -926,6 +1588,31 @@ function getCentaurCombatSpriteCanvas(unit, side) {
   drawCentaurCombatSprite(drawCtx, look, side, spriteCanvas.width, spriteCanvas.height);
   centaurCombatSpriteCache.set(key, spriteCanvas);
   return spriteCanvas;
+}
+
+function getDemonCombatSpriteCanvas(unit, side) {
+  const look = getDemonCombatLook(unit);
+  const key = `${unit.archetypeId || "imp"}:${side}`;
+  if (demonCombatSpriteCache.has(key)) {
+    return demonCombatSpriteCache.get(key);
+  }
+
+  const spriteCanvas = createArtCanvas(DEMON_COMBAT_SPRITE_NATIVE_WIDTH, DEMON_COMBAT_SPRITE_NATIVE_HEIGHT);
+  const drawCtx = spriteCanvas.getContext("2d");
+  drawDemonCombatSprite(drawCtx, look, side, spriteCanvas.width, spriteCanvas.height);
+  demonCombatSpriteCache.set(key, spriteCanvas);
+  return spriteCanvas;
+}
+
+function getCombatSpriteCanvas(side, unit) {
+  const raceId = unit?.unitRaceId || state.stacks[side]?.raceId;
+  if (raceId === "centaur-clans") {
+    return getCentaurCombatSpriteCanvas(unit, side);
+  }
+  if (raceId === "demon-horde") {
+    return getDemonCombatSpriteCanvas(unit, side);
+  }
+  return null;
 }
 
 function drawCombatRing(cx, cy, stroke, width = 2, radius = COMBAT_TILE_SIZE * 0.28) {
@@ -953,6 +1640,12 @@ function getRaceArtCanvas(race, variant) {
       drawCentaurTokenArt(artCtx, size.width);
     } else {
       drawCentaurArcherArt(artCtx, size.width, size.height);
+    }
+  } else if (race.artKey === "demon-horde") {
+    if (variant === "map") {
+      drawDemonTokenArt(artCtx, size.width);
+    } else {
+      drawDemonHordeArt(artCtx, size.width, size.height);
     }
   } else {
     drawGenericRaceArt(artCtx, size.width, size.height, race);
@@ -1838,7 +2531,7 @@ function drawStackToken(side, stack) {
   ctx.save();
   ctx.clip();
 
-  if (race?.artKey === "centaur-archer") {
+  if (race?.artKey) {
     const art = getRaceArtCanvas(race, "map");
     ctx.drawImage(art, cx - radius, cy - radius, radius * 2, radius * 2);
   } else {
@@ -1888,10 +2581,10 @@ function drawCombatUnits() {
     for (const unit of getAliveUnits(side)) {
       const cx = unit.x * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
       const cy = unit.y * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
-      const isCentaurSprite = Boolean(unit.archetypeId);
+      const sprite = getCombatSpriteCanvas(side, unit);
+      const hasSprite = Boolean(sprite);
 
-      if (isCentaurSprite) {
-        const sprite = getCentaurCombatSpriteCanvas(unit, side);
+      if (hasSprite) {
         const drawW = COMBAT_TILE_SIZE * 0.86;
         const drawH = COMBAT_TILE_SIZE * 0.72;
         const drawX = cx - drawW * 0.5;
@@ -1920,15 +2613,15 @@ function drawCombatUnits() {
       }
 
       if (active && side === "player" && unit.id === active.id) {
-        drawCombatRing(cx, cy, "#ffffff", 3, COMBAT_TILE_SIZE * (isCentaurSprite ? 0.3 : 0.24));
+        drawCombatRing(cx, cy, "#ffffff", 3, COMBAT_TILE_SIZE * (hasSprite ? 0.3 : 0.24));
       }
 
       if (hoveredEntity?.type === "combatUnit" && hoveredEntity.unitId === unit.id) {
-        drawCombatRing(cx, cy, "#6fd3ff", 3, COMBAT_TILE_SIZE * (isCentaurSprite ? 0.31 : 0.25));
+        drawCombatRing(cx, cy, "#6fd3ff", 3, COMBAT_TILE_SIZE * (hasSprite ? 0.31 : 0.25));
       }
 
       if (side === "enemy" && targetableIds.has(unit.id)) {
-        drawCombatRing(cx, cy, "#ffd34d", 3, COMBAT_TILE_SIZE * (isCentaurSprite ? 0.32 : 0.25));
+        drawCombatRing(cx, cy, "#ffd34d", 3, COMBAT_TILE_SIZE * (hasSprite ? 0.32 : 0.25));
       }
     }
   };
@@ -2117,6 +2810,7 @@ function renderGameToText() {
         units: getAliveUnits("player").map((unit) => ({
           id: unit.id,
           label: unitName(unit),
+          unitRaceId: unit.unitRaceId || state.stacks.player.raceId,
           archetypeId: unit.archetypeId || null,
           unitClass: unit.unitClass || null,
           loadout: unit.loadout || null,
@@ -2143,6 +2837,7 @@ function renderGameToText() {
         units: getAliveUnits("enemy").map((unit) => ({
           id: unit.id,
           label: unitName(unit),
+          unitRaceId: unit.unitRaceId || state.stacks.enemy.raceId,
           archetypeId: unit.archetypeId || null,
           unitClass: unit.unitClass || null,
           loadout: unit.loadout || null,
@@ -2177,6 +2872,7 @@ function renderGameToText() {
           getAliveUnits(side).map((unit) => ({
             id: unit.id,
             label: unitName(unit),
+            unitRaceId: unit.unitRaceId || state.stacks[side].raceId,
             archetypeId: unit.archetypeId || null,
             unitClass: unit.unitClass || null,
             loadout: unit.loadout || null,
