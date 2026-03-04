@@ -29,10 +29,11 @@
       <button id="attackBtn">Attack</button>
       <button id="endTurnBtn">End Turn</button>
       <button id="resetBtn">Reset</button>
-      <p class="hint">Fog of war: you only see 2 tiles around your stack; explored terrain stays revealed. Stacks show race-token subscripts (for example Dₙ). Combat: A cycle, arrows move, Space/Attack to target, arrow toward enemy to confirm, Enter end turn.</p>
+      <p class="hint">Hover stacks/units for stats. Combat hit chance starts at 70% and is modified by ATK vs EVA (10%-95%). Armor absorbs up to 80% of incoming damage until depleted.</p>
     </section>
     <section id="boardWrap" class="board-wrap hidden-until-start">
       <canvas id="board" width="640" height="640" aria-label="Game board"></canvas>
+      <div id="unitTooltip" class="unit-tooltip hidden" aria-live="polite"></div>
     </section>
   </main>
   <script src="game.js"></script>

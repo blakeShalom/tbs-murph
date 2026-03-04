@@ -51,3 +51,42 @@ TODO / suggestions for next agent:
 TODO/suggestions:
 - Mirror stack runtime changes into `src/` modules to remove divergence from `game.js`.
 - Add deterministic seed support for stack-size and per-unit MP generation to make Playwright scenarios reproducible.
+
+- Added stat-based combat model in `game.js`.
+  - Unit stats now include: HP (up to 30), ATK, DMG, ARM, EVA (1-20 where applicable).
+  - Replaced elimination-vs-elimination roll with strike resolution:
+    - Base hit chance 70%, modified by attacker ATK vs defender EVA.
+    - Hit chance clamped to 10%-95%.
+    - Raw damage rolls from 1..DMG.
+    - Armor absorbs up to 80% of raw damage until depleted; remainder hits HP.
+    - Defender does not counterattack immediately; attacks only happen on side turn.
+- Added tooltip UI shell in `index.html` + `styles.css` and hover wiring in `game.js` for map stacks and combat units.
+- Added side-prefixed unit naming (`P-...` / `C-...`) in combat/status text to avoid ambiguity when both sides pick the same race.
+
+Validation runs for this feature:
+- Unit tests: `npm test` (33/33 passing).
+- Skill Playwright client runs:
+  - `output/web-game/stats-map-idle/`
+  - `output/web-game/stats-map-tooltip/`
+  - `output/web-game/stats-combat-tooltip/`
+  - `output/web-game/stats-combat-tooltip-2/`
+  - No `errors-0.json` generated in these runs.
+- Additional full-page Playwright verification (DOM tooltip visibility and content):
+  - `output/web-game/stats-tooltip-dom/map-tooltip.png`
+  - `output/web-game/stats-tooltip-dom/combat-tooltip.png`
+  - `output/web-game/stats-tooltip-dom/tooltip-check.json` (both `hidden: false`).
+- Focused combat behavior check:
+  - `output/web-game/stats-combat-check/combat-check.json`
+  - Confirmed no immediate retaliation on player attack in same action (attacker HP unchanged immediately after strike).
+
+TODO / follow-ups:
+- Current `tests/` cover modular `src/` runtime, not the active `game.js` entrypoint; add tests around stat formulas and tooltip payloads if `game.js` remains the source of truth.
+- Consider truncating map stack tooltip lines for very large stacks on smaller screens.
+- Post-tweak verification: reran `output/web-game/stats-combat-tooltip-2/` via skill client and reran `npm test` (33 passing) after unit-name clarity update.
+- Added combat-stat unit test coverage with new pure helper module:
+  - New module: `src/systems/combatStats.js`
+  - New tests: `tests/combat_stats.test.js`
+  - Covered: base hit chance, clamp bounds (10%/95%), miss behavior, 80% armor absorption cap, low-armor spillover, elimination, no immediate retaliation, damage range.
+- Verification:
+  - `npm test` now passes with 42 total tests.
+  - Ran skill Playwright smoke loop after test additions: `output/web-game/tests-smoke/` with no `errors-0.json`.

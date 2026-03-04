@@ -3,6 +3,9 @@ const GRID_SIZE = 10;
 const COMBAT_GRID_SIZE = 8;
 const COMBAT_TILE_SIZE = boardSize() / COMBAT_GRID_SIZE;
 const FOG_RADIUS = 2;
+const BASE_HIT_CHANCE = 70;
+const MIN_HIT_CHANCE = 10;
+const MAX_HIT_CHANCE = 95;
 
 const MAP_TERRAIN_RULES = {
   plains: { label: "Plains", cost: 1, passable: true, color: "#d8e2c5" },
@@ -53,6 +56,7 @@ const enemyRaceSelectEl = document.getElementById("enemyRaceSelect");
 const startGameBtnEl = document.getElementById("startGameBtn");
 const hudPanelEl = document.getElementById("hudPanel");
 const boardWrapEl = document.getElementById("boardWrap");
+const unitTooltipEl = document.getElementById("unitTooltip");
 const statusEl = document.getElementById("status");
 const modeLabelEl = document.getElementById("modeLabel");
 const mapMpLabelEl = document.getElementById("mapMpLabel");
@@ -70,6 +74,7 @@ let selectedRaces = {
   player: RANDOM_RACE_ID,
   enemy: RANDOM_RACE_ID
 };
+let hoveredEntity = null;
 
 function getRaceById(raceId) {
   return RACE_OPTIONS.find((race) => race.id === raceId) || RACE_OPTIONS[0];
@@ -131,11 +136,20 @@ function createStack(side, race, x, y) {
   const units = [];
 
   for (let i = 0; i < count; i += 1) {
+    const maxHp = randomInt(14, 30);
+    const armor = randomInt(1, 20);
     units.push({
       id: `${side[0].toUpperCase()}${i + 1}`,
       label: `${race.token}${i + 1}`,
+      side,
       alive: true,
-      hp: 1,
+      hp: maxHp,
+      maxHp,
+      attack: randomInt(1, 20),
+      damage: randomInt(1, 20),
+      armor,
+      maxArmor: armor,
+      evasiveness: randomInt(1, 20),
       maxCombatMp: randomInt(1, 3),
       currentCombatMp: 0,
       x: null,
@@ -311,11 +325,82 @@ function randomInt(min, max) {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+function clamp(value, min, max) {
+  return Math.max(min, Math.min(max, value));
+}
+
 function toSubscript(n) {
   return String(n)
     .split("")
     .map((digit) => SUBSCRIPT_DIGITS[digit] || digit)
     .join("");
+}
+
+function getHitChance(attacker, defender) {
+  const modified = BASE_HIT_CHANCE + (attacker.attack - defender.evasiveness) * 2;
+  return clamp(modified, MIN_HIT_CHANCE, MAX_HIT_CHANCE);
+}
+
+function formatUnitStatLine(unit) {
+  return `${unitName(unit)} HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness}`;
+}
+
+function setTooltipHtml(html, x, y) {
+  if (!html) {
+    unitTooltipEl.classList.add("hidden");
+    unitTooltipEl.innerHTML = "";
+    return;
+  }
+
+  unitTooltipEl.innerHTML = html;
+  unitTooltipEl.classList.remove("hidden");
+
+  if (!Number.isFinite(x) || !Number.isFinite(y)) {
+    return;
+  }
+
+  const wrapRect = boardWrapEl.getBoundingClientRect();
+  const tipRect = unitTooltipEl.getBoundingClientRect();
+
+  const margin = 10;
+  const maxLeft = Math.max(margin, wrapRect.width - tipRect.width - margin);
+  const maxTop = Math.max(margin, wrapRect.height - tipRect.height - margin);
+
+  const localX = x - wrapRect.left + 14;
+  const localY = y - wrapRect.top + 14;
+  const clampedLeft = clamp(localX, margin, maxLeft);
+  const clampedTop = clamp(localY, margin, maxTop);
+
+  unitTooltipEl.style.left = `${clampedLeft}px`;
+  unitTooltipEl.style.top = `${clampedTop}px`;
+}
+
+function refreshHoveredTooltip() {
+  if (!hoveredEntity || !gameStarted) {
+    return;
+  }
+
+  if (hoveredEntity.type === "mapStack") {
+    if (
+      hoveredEntity.side === "enemy" &&
+      state.mode === "map" &&
+      !isTileVisibleToPlayer(state.stacks.enemy.x, state.stacks.enemy.y)
+    ) {
+      hoveredEntity = null;
+      setTooltipHtml("");
+      return;
+    }
+    setTooltipHtml(buildMapStackTooltipHtml(hoveredEntity.side));
+    return;
+  }
+
+  const unit = getUnitById(hoveredEntity.side, hoveredEntity.unitId);
+  if (!unit || !unit.alive) {
+    hoveredEntity = null;
+    setTooltipHtml("");
+    return;
+  }
+  setTooltipHtml(buildCombatUnitTooltipHtml(hoveredEntity.side, unit));
 }
 
 function getMapTerrainRule(type) {
@@ -343,7 +428,8 @@ function getStackCount(side) {
 }
 
 function unitName(unit) {
-  return unit.label || unit.id;
+  const prefix = unit.side === "player" ? "P" : "C";
+  return `${prefix}-${unit.label || unit.id}`;
 }
 
 function getActivePlayerUnit() {
@@ -465,44 +551,57 @@ function nearestTarget(from, candidates) {
   return best;
 }
 
-function rollCombat(attacker, defender) {
-  const attackerRoll = randomInt(1, 20);
-  const defenderRoll = randomInt(1, 20);
-  const attackerScore = attackerRoll + attacker.maxCombatMp;
-  const defenderScore = defenderRoll + defender.maxCombatMp;
-
-  return {
-    attackerRoll,
-    defenderRoll,
-    winner: attackerScore >= defenderScore ? "attacker" : "defender"
-  };
+function eliminateUnit(unit) {
+  unit.alive = false;
+  unit.hp = 0;
+  unit.armor = 0;
+  unit.currentCombatMp = 0;
+  unit.x = null;
+  unit.y = null;
 }
 
 function resolveAttack(attackerSide, attacker, defenderSide, defender) {
-  const result = rollCombat(attacker, defender);
+  const hitChance = getHitChance(attacker, defender);
+  const hitRoll = randomInt(1, 100);
+  const hit = hitRoll <= hitChance;
 
-  if (result.winner === "attacker") {
-    defender.alive = false;
-    defender.hp = 0;
-    defender.x = null;
-    defender.y = null;
+  if (!hit) {
     return {
-      ...result,
-      eliminated: unitName(defender),
-      winnerSide: attackerSide,
-      loserSide: defenderSide
+      attackerSide,
+      defenderSide,
+      hitChance,
+      hitRoll,
+      hit: false,
+      rawDamage: 0,
+      armorAbsorbed: 0,
+      hpDamage: 0,
+      eliminated: null
     };
   }
 
-  attacker.alive = false;
-  attacker.hp = 0;
-  attacker.x = null;
-  attacker.y = null;
+  const rawDamage = randomInt(1, Math.max(1, attacker.damage));
+  const armorAbsorbCap = Math.ceil(rawDamage * 0.8);
+  const armorAbsorbed = Math.min(defender.armor, armorAbsorbCap);
+  defender.armor -= armorAbsorbed;
+  const hpDamage = Math.max(0, rawDamage - armorAbsorbed);
+  defender.hp = Math.max(0, defender.hp - hpDamage);
+
+  let eliminated = null;
+  if (defender.hp <= 0) {
+    eliminated = unitName(defender);
+    eliminateUnit(defender);
+  }
+
   return {
-    ...result,
-    eliminated: unitName(attacker),
-    winnerSide: defenderSide,
-    loserSide: attackerSide
+    attackerSide,
+    defenderSide,
+    hitChance,
+    hitRoll,
+    hit: true,
+    rawDamage,
+    armorAbsorbed,
+    hpDamage,
+    eliminated
   };
 }
 
@@ -555,7 +654,7 @@ function updateControls() {
   const active = getActivePlayerUnit();
   if (combatMpLabelEl) {
     combatMpLabelEl.textContent = active
-      ? `${unitName(active)} ${active.currentCombatMp}/${active.maxCombatMp}`
+      ? `${unitName(active)} MP ${active.currentCombatMp}/${active.maxCombatMp} HP ${active.hp}/${active.maxHp}`
       : `0/0`;
   }
 
@@ -564,6 +663,7 @@ function updateControls() {
     state.combatTurn === "player" &&
     !state.gameOver &&
     active &&
+    active.currentCombatMp > 0 &&
     adjacentTargets(active, "enemy").length > 0;
 
   attackBtn.disabled = !canAttack;
@@ -571,6 +671,8 @@ function updateControls() {
 }
 
 function startCombat(initiator) {
+  hoveredEntity = null;
+  setTooltipHtml("");
   state.mode = "combat";
   state.combatTurn = initiator;
   state.combatTerrain = createCombatTerrain(COMBAT_GRID_SIZE);
@@ -766,7 +868,12 @@ function performPlayerAttack(attacker, defender) {
   attacker.currentCombatMp = 0;
   clearTargetingMode();
 
-  statusEl.textContent = `Combat View: ${unitName(attacker)} attacked ${unitName(defender)} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+  if (!result.hit) {
+    statusEl.textContent = `Combat View: ${unitName(attacker)} attacked ${unitName(defender)} and missed (roll ${result.hitRoll} vs ${result.hitChance}%).`;
+  } else {
+    const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
+    statusEl.textContent = `Combat View: ${unitName(attacker)} hit ${unitName(defender)} for ${result.rawDamage} raw damage (${result.armorAbsorbed} absorbed, ${result.hpDamage} HP dealt).${eliminatedText}`;
+  }
 
   if (!checkCombatEnd()) {
     const next = getActivePlayerUnit();
@@ -820,6 +927,12 @@ function playerCombatAttack() {
     return;
   }
 
+  if (active.currentCombatMp <= 0) {
+    statusEl.textContent = `Combat View: ${unitName(active)} has no MP left to attack.`;
+    updateControls();
+    return;
+  }
+
   if (state.combat && state.combat.targeting) {
     clearTargetingMode();
     statusEl.textContent = `Combat View: Targeting canceled for ${unitName(active)}.`;
@@ -864,7 +977,12 @@ function enemyCombatTurn() {
         const defender = targets[0];
         const result = resolveAttack("enemy", unit, "player", defender);
         unit.currentCombatMp = 0;
-        statusEl.textContent = `Combat View: ${unitName(unit)} attacked ${unitName(defender)} (${result.attackerRoll} vs ${result.defenderRoll}). ${result.eliminated} was eliminated.`;
+        if (!result.hit) {
+          statusEl.textContent = `Combat View: ${unitName(unit)} attacked ${unitName(defender)} and missed (roll ${result.hitRoll} vs ${result.hitChance}%).`;
+        } else {
+          const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
+          statusEl.textContent = `Combat View: ${unitName(unit)} hit ${unitName(defender)} for ${result.rawDamage} raw damage (${result.armorAbsorbed} absorbed, ${result.hpDamage} HP dealt).${eliminatedText}`;
+        }
 
         if (checkCombatEnd()) {
           updateControls();
@@ -1002,6 +1120,13 @@ function drawStackToken(side, stack) {
   ctx.arc(cx, cy, TILE_SIZE * 0.31, 0, Math.PI * 2);
   ctx.fill();
 
+  if (hoveredEntity?.type === "mapStack" && hoveredEntity.side === side) {
+    ctx.strokeStyle = "#ffffff";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    ctx.lineWidth = 1;
+  }
+
   ctx.fillStyle = "#ffffff";
   ctx.font = "bold 18px sans-serif";
   ctx.textAlign = "center";
@@ -1028,6 +1153,13 @@ function drawCombatUnits() {
 
       if (active && side === "player" && unit.id === active.id) {
         ctx.strokeStyle = "#ffffff";
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.lineWidth = 1;
+      }
+
+      if (hoveredEntity?.type === "combatUnit" && hoveredEntity.unitId === unit.id) {
+        ctx.strokeStyle = "#6fd3ff";
         ctx.lineWidth = 3;
         ctx.stroke();
         ctx.lineWidth = 1;
@@ -1069,6 +1201,118 @@ function drawCombatView() {
   ctx.fillText(`${state.stacks.player.race}: ${getStackCount("player")} | ${state.stacks.enemy.race}: ${getStackCount("enemy")}`, board.width / 2, 26);
 }
 
+function getCanvasPointFromEvent(event) {
+  const rect = board.getBoundingClientRect();
+  if (!rect.width || !rect.height) return null;
+  const x = ((event.clientX - rect.left) / rect.width) * board.width;
+  const y = ((event.clientY - rect.top) / rect.height) * board.height;
+  return { x, y, clientX: event.clientX, clientY: event.clientY };
+}
+
+function getMapHoverEntity(px, py) {
+  const entries = [];
+  entries.push({ side: "player", stack: state.stacks.player });
+  if (isTileVisibleToPlayer(state.stacks.enemy.x, state.stacks.enemy.y)) {
+    entries.push({ side: "enemy", stack: state.stacks.enemy });
+  }
+
+  for (const entry of entries) {
+    if (getStackCount(entry.side) <= 0) continue;
+    const cx = entry.stack.x * TILE_SIZE + TILE_SIZE / 2;
+    const cy = entry.stack.y * TILE_SIZE + TILE_SIZE / 2;
+    if (Math.hypot(px - cx, py - cy) <= TILE_SIZE * 0.35) {
+      return {
+        type: "mapStack",
+        side: entry.side
+      };
+    }
+  }
+
+  return null;
+}
+
+function getCombatHoverEntity(px, py) {
+  const allUnits = ["player", "enemy"].flatMap((side) =>
+    getAliveUnits(side).map((unit) => ({ side, unit }))
+  );
+
+  for (const entry of allUnits) {
+    const cx = entry.unit.x * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+    const cy = entry.unit.y * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+    if (Math.hypot(px - cx, py - cy) <= COMBAT_TILE_SIZE * 0.28) {
+      return {
+        type: "combatUnit",
+        side: entry.side,
+        unitId: entry.unit.id
+      };
+    }
+  }
+
+  return null;
+}
+
+function getUnitById(side, unitId) {
+  return state.stacks[side].units.find((unit) => unit.id === unitId) || null;
+}
+
+function buildMapStackTooltipHtml(side) {
+  const stack = state.stacks[side];
+  const units = getAliveUnits(side);
+  const lines = units
+    .map((unit) => `<div>${formatUnitStatLine(unit)}</div>`)
+    .join("");
+  return `<strong>${stack.race} Stack (${units.length} units)</strong>${lines}`;
+}
+
+function buildCombatUnitTooltipHtml(side, unit) {
+  const active = side === "enemy" ? getActivePlayerUnit() : null;
+  const hitChanceText =
+    state.mode === "combat" && active && side === "enemy"
+      ? `<div>Chance for ${unitName(active)} to hit: ${getHitChance(active, unit)}%</div>`
+      : "";
+  return `<strong>${state.stacks[side].race} ${unitName(unit)}</strong><div>${formatUnitStatLine(unit)}</div>${hitChanceText}`;
+}
+
+function updateHoveredEntity(event) {
+  if (!gameStarted) return;
+
+  const point = getCanvasPointFromEvent(event);
+  if (!point) return;
+
+  const nextHovered =
+    state.mode === "map"
+      ? getMapHoverEntity(point.x, point.y)
+      : getCombatHoverEntity(point.x, point.y);
+
+  if (!nextHovered) {
+    if (hoveredEntity) {
+      hoveredEntity = null;
+      setTooltipHtml("", point.clientX, point.clientY);
+      draw();
+    }
+    return;
+  }
+
+  hoveredEntity = nextHovered;
+  if (nextHovered.type === "mapStack") {
+    setTooltipHtml(buildMapStackTooltipHtml(nextHovered.side), point.clientX, point.clientY);
+  } else {
+    const unit = getUnitById(nextHovered.side, nextHovered.unitId);
+    if (unit) {
+      setTooltipHtml(buildCombatUnitTooltipHtml(nextHovered.side, unit), point.clientX, point.clientY);
+    }
+  }
+
+  draw();
+}
+
+function clearHoveredEntity() {
+  if (!hoveredEntity) return;
+  hoveredEntity = null;
+  setTooltipHtml("");
+  draw();
+}
+
 function draw() {
   ctx.clearRect(0, 0, board.width, board.height);
   if (!gameStarted) {
@@ -1079,6 +1323,7 @@ function draw() {
   } else {
     drawCombatView();
   }
+  refreshHoveredTooltip();
 }
 
 function renderGameToText() {
@@ -1113,7 +1358,20 @@ function renderGameToText() {
         race: state.stacks.player.race,
         count: getStackCount("player"),
         mapPos: { x: state.stacks.player.x, y: state.stacks.player.y },
-        mapMp: state.stacks.player.currentMapMp
+        mapMp: state.stacks.player.currentMapMp,
+        token: state.stacks.player.token,
+        units: getAliveUnits("player").map((unit) => ({
+          id: unit.id,
+          label: unitName(unit),
+          hp: unit.hp,
+          maxHp: unit.maxHp,
+          armor: unit.armor,
+          maxArmor: unit.maxArmor,
+          attack: unit.attack,
+          damage: unit.damage,
+          evasiveness: unit.evasiveness,
+          mapPos: { x: state.stacks.player.x, y: state.stacks.player.y }
+        }))
       },
       enemy: {
         race: state.stacks.enemy.race,
@@ -1121,21 +1379,51 @@ function renderGameToText() {
         mapPos: enemyVisible || state.mode !== "map"
           ? { x: state.stacks.enemy.x, y: state.stacks.enemy.y }
           : null,
-        mapMp: state.stacks.enemy.currentMapMp
+        mapMp: state.stacks.enemy.currentMapMp,
+        token: state.stacks.enemy.token,
+        units: getAliveUnits("enemy").map((unit) => ({
+          id: unit.id,
+          label: unitName(unit),
+          hp: unit.hp,
+          maxHp: unit.maxHp,
+          armor: unit.armor,
+          maxArmor: unit.maxArmor,
+          attack: unit.attack,
+          damage: unit.damage,
+          evasiveness: unit.evasiveness,
+          mapPos: enemyVisible || state.mode !== "map"
+            ? { x: state.stacks.enemy.x, y: state.stacks.enemy.y }
+            : null
+        }))
       }
     },
     activePlayerUnitId: active ? active.id : null,
+    activePlayerUnitLabel: active ? unitName(active) : null,
     targetingMode: Boolean(state.combat?.targeting),
+    combatRules: {
+      baseHitChance: BASE_HIT_CHANCE,
+      minHitChance: MIN_HIT_CHANCE,
+      maxHitChance: MAX_HIT_CHANCE
+    },
+    hoveredEntity,
     targetableEnemies,
     combatUnits: state.mode === "combat"
       ? ["player", "enemy"].flatMap((side) =>
           getAliveUnits(side).map((unit) => ({
             id: unit.id,
+            label: unitName(unit),
             side,
             x: unit.x,
             y: unit.y,
             mp: unit.currentCombatMp,
-            maxMp: unit.maxCombatMp
+            maxMp: unit.maxCombatMp,
+            hp: unit.hp,
+            maxHp: unit.maxHp,
+            armor: unit.armor,
+            maxArmor: unit.maxArmor,
+            attack: unit.attack,
+            damage: unit.damage,
+            evasiveness: unit.evasiveness
           }))
         )
       : []
@@ -1182,6 +1470,8 @@ function startGameFromSetup() {
   selectedRaces.player = playerRaceSelectEl.value || RANDOM_RACE_ID;
   selectedRaces.enemy = enemyRaceSelectEl.value || RANDOM_RACE_ID;
   gameStarted = true;
+  hoveredEntity = null;
+  setTooltipHtml("");
   setGamePanelsVisible(true);
   resetGame();
 }
@@ -1193,6 +1483,8 @@ function resetGame() {
 
   timelineToken += 1;
   pendingActions.length = 0;
+  hoveredEntity = null;
+  setTooltipHtml("");
   state = initialState();
   updateRaceLabels();
   statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Stack sizes are random (1-8): ${state.stacks.player.token}${toSubscript(getStackCount("player"))} vs ${state.stacks.enemy.token}${toSubscript(getStackCount("enemy"))}.`;
@@ -1243,6 +1535,8 @@ attackBtn.addEventListener("click", playerCombatAttack);
 endTurnBtn.addEventListener("click", endTurn);
 resetBtn.addEventListener("click", resetGame);
 startGameBtnEl.addEventListener("click", startGameFromSetup);
+board.addEventListener("mousemove", updateHoveredEntity);
+board.addEventListener("mouseleave", clearHoveredEntity);
 
 initializeSetupScreen();
 setGamePanelsVisible(false);

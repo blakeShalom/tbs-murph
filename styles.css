@@ -101,6 +101,7 @@ button:disabled {
 .board-wrap {
   display: flex;
   justify-content: center;
+  position: relative;
 }
 
 canvas {
@@ -114,6 +115,32 @@ canvas {
 .hint {
   margin-bottom: 0;
   font-size: 0.92rem;
+}
+
+.unit-tooltip {
+  position: absolute;
+  top: 0;
+  left: 0;
+  max-width: min(94vw, 360px);
+  pointer-events: none;
+  background: rgba(22, 31, 26, 0.94);
+  color: #f5f7ef;
+  border: 1px solid rgba(220, 236, 210, 0.35);
+  border-radius: 8px;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.82rem;
+  line-height: 1.35;
+  z-index: 20;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.28);
+}
+
+.unit-tooltip.hidden {
+  display: none;
+}
+
+.unit-tooltip strong {
+  display: block;
+  margin-bottom: 0.2rem;
 }
 
 @media (min-width: 900px) {
