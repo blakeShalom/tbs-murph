@@ -8,6 +8,11 @@ const MIN_HIT_CHANCE = 10;
 const MAX_HIT_CHANCE = 95;
 const DAMAGE_EXP_LAMBDA = 2.25;
 const MAX_COMBAT_LOG_ENTRIES = 40;
+const RACE_PREVIEW_WIDTH = 300;
+const RACE_PREVIEW_HEIGHT = 170;
+const MAP_ART_SIZE = 64;
+const CENTAUR_COMBAT_SPRITE_NATIVE_WIDTH = 140;
+const CENTAUR_COMBAT_SPRITE_NATIVE_HEIGHT = 110;
 
 const MAP_TERRAIN_RULES = {
   plains: { label: "Plains", cost: 1, passable: true, color: "#d8e2c5" },
@@ -38,6 +43,7 @@ const SUBSCRIPT_DIGITS = {
 
 const RANDOM_RACE_ID = "random";
 const RACE_OPTIONS = [
+  { id: "centaur-clans", name: "Centaur Clans", token: "C", color: "#7d633c", artKey: "centaur-archer" },
   { id: "dawnforged", name: "Dawnforged", token: "D", color: "#3b7a57" },
   { id: "ironclad", name: "Ironclad", token: "I", color: "#7f2f2f" },
   { id: "sylvan", name: "Sylvan", token: "S", color: "#2f6e49" },
@@ -45,6 +51,100 @@ const RACE_OPTIONS = [
   { id: "tideborn", name: "Tideborn", token: "T", color: "#2f5f8c" },
   { id: "stoneguard", name: "Stoneguard", token: "G", color: "#5f655f" }
 ];
+
+const CENTAUR_UNIT_ARCHETYPES = [
+  {
+    id: "recon",
+    name: "Recon",
+    loadout: "Short Bow + Light Sword",
+    coatColor: "#8f6a49",
+    statRanges: {
+      hp: [14, 22],
+      attack: [8, 15],
+      damage: [4, 11],
+      armor: [1, 7],
+      evasiveness: [12, 20],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "brute",
+    name: "Brute",
+    loadout: "Plate Armor + Two-Handed Axe",
+    coatColor: "#694f39",
+    statRanges: {
+      hp: [22, 30],
+      attack: [11, 19],
+      damage: [10, 20],
+      armor: [12, 20],
+      evasiveness: [2, 10],
+      combatMp: [1, 2]
+    }
+  },
+  {
+    id: "marksman",
+    name: "Marksman",
+    loadout: "Longbow + Short Sword + Leather Armor",
+    coatColor: "#765b3f",
+    statRanges: {
+      hp: [16, 25],
+      attack: [10, 18],
+      damage: [8, 16],
+      armor: [4, 12],
+      evasiveness: [8, 16],
+      combatMp: [2, 3]
+    }
+  },
+  {
+    id: "captain",
+    name: "Captain",
+    loadout: "Long Axe + Medium Armor",
+    coatColor: "#d8d4cb",
+    statRanges: {
+      hp: [20, 30],
+      attack: [12, 20],
+      damage: [9, 18],
+      armor: [8, 15],
+      evasiveness: [6, 14],
+      combatMp: [1, 3]
+    }
+  }
+];
+
+const CENTAUR_COMBAT_SPRITE_LOOKUP = {
+  recon: {
+    horse: "#8f6746",
+    horseShade: "#5b3d27",
+    skin: "#c49a71",
+    armor: "#8a8e84",
+    mane: "#523825",
+    weapon: "shortbow+sword"
+  },
+  brute: {
+    horse: "#70533f",
+    horseShade: "#452f22",
+    skin: "#b08862",
+    armor: "#bfc5cd",
+    mane: "#2f251e",
+    weapon: "greataxe"
+  },
+  marksman: {
+    horse: "#7a5f44",
+    horseShade: "#4c3426",
+    skin: "#bb936b",
+    armor: "#916d4b",
+    mane: "#493121",
+    weapon: "longbow+sword"
+  },
+  captain: {
+    horse: "#e1dbd0",
+    horseShade: "#a6a8a8",
+    skin: "#d9c3a4",
+    armor: "#88928b",
+    mane: "#f1eee6",
+    weapon: "poleaxe"
+  }
+};
 
 function boardSize() {
   return 640;
@@ -55,6 +155,8 @@ const ctx = board.getContext("2d");
 const setupScreenEl = document.getElementById("setupScreen");
 const playerRaceSelectEl = document.getElementById("playerRaceSelect");
 const enemyRaceSelectEl = document.getElementById("enemyRaceSelect");
+const playerRacePreviewEl = document.getElementById("playerRacePreview");
+const enemyRacePreviewEl = document.getElementById("enemyRacePreview");
 const startGameBtnEl = document.getElementById("startGameBtn");
 const hudPanelEl = document.getElementById("hudPanel");
 const boardWrapEl = document.getElementById("boardWrap");
@@ -79,6 +181,8 @@ let selectedRaces = {
   enemy: RANDOM_RACE_ID
 };
 let hoveredEntity = null;
+const raceArtCache = new Map();
+const centaurCombatSpriteCache = new Map();
 
 function getRaceById(raceId) {
   return RACE_OPTIONS.find((race) => race.id === raceId) || RACE_OPTIONS[0];
@@ -135,30 +239,74 @@ const initialState = () => {
 
 let state = initialState();
 
+function rollFromRange(range) {
+  return randomInt(range[0], range[1]);
+}
+
+function pickRandomCentaurArchetype() {
+  return CENTAUR_UNIT_ARCHETYPES[randomInt(0, CENTAUR_UNIT_ARCHETYPES.length - 1)];
+}
+
+function createCentaurUnit(side, race, index) {
+  const archetype = pickRandomCentaurArchetype();
+  const maxHp = rollFromRange(archetype.statRanges.hp);
+  const armor = rollFromRange(archetype.statRanges.armor);
+
+  return {
+    id: `${side[0].toUpperCase()}${index + 1}`,
+    label: `${race.token}${index + 1}`,
+    side,
+    alive: true,
+    unitClass: archetype.name,
+    loadout: archetype.loadout,
+    archetypeId: archetype.id,
+    coatColor: archetype.coatColor,
+    hp: maxHp,
+    maxHp,
+    attack: rollFromRange(archetype.statRanges.attack),
+    damage: rollFromRange(archetype.statRanges.damage),
+    armor,
+    maxArmor: armor,
+    evasiveness: rollFromRange(archetype.statRanges.evasiveness),
+    maxCombatMp: rollFromRange(archetype.statRanges.combatMp),
+    currentCombatMp: 0,
+    x: null,
+    y: null
+  };
+}
+
+function createDefaultUnit(side, race, index) {
+  const maxHp = randomInt(14, 30);
+  const armor = randomInt(1, 20);
+  return {
+    id: `${side[0].toUpperCase()}${index + 1}`,
+    label: `${race.token}${index + 1}`,
+    side,
+    alive: true,
+    hp: maxHp,
+    maxHp,
+    attack: randomInt(1, 20),
+    damage: randomInt(1, 20),
+    armor,
+    maxArmor: armor,
+    evasiveness: randomInt(1, 20),
+    maxCombatMp: randomInt(1, 3),
+    currentCombatMp: 0,
+    x: null,
+    y: null
+  };
+}
+
 function createStack(side, race, x, y) {
   const count = randomInt(1, 8);
   const units = [];
 
   for (let i = 0; i < count; i += 1) {
-    const maxHp = randomInt(14, 30);
-    const armor = randomInt(1, 20);
-    units.push({
-      id: `${side[0].toUpperCase()}${i + 1}`,
-      label: `${race.token}${i + 1}`,
-      side,
-      alive: true,
-      hp: maxHp,
-      maxHp,
-      attack: randomInt(1, 20),
-      damage: randomInt(1, 20),
-      armor,
-      maxArmor: armor,
-      evasiveness: randomInt(1, 20),
-      maxCombatMp: randomInt(1, 3),
-      currentCombatMp: 0,
-      x: null,
-      y: null
-    });
+    if (race.id === "centaur-clans") {
+      units.push(createCentaurUnit(side, race, i));
+    } else {
+      units.push(createDefaultUnit(side, race, i));
+    }
   }
 
   return {
@@ -333,6 +481,506 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
+function createArtCanvas(width, height) {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  return canvas;
+}
+
+function drawFrameBorder(ctx, width, height) {
+  const border = Math.max(2, Math.floor(width * 0.03));
+  ctx.fillStyle = "rgba(232, 212, 166, 0.78)";
+  ctx.fillRect(0, 0, width, border);
+  ctx.fillRect(0, height - border, width, border);
+  ctx.fillRect(0, border, border, height - border * 2);
+  ctx.fillRect(width - border, border, border, height - border * 2);
+  ctx.strokeStyle = "#6f5730";
+  ctx.lineWidth = Math.max(1, width * 0.012);
+  ctx.strokeRect(width * 0.02, height * 0.02, width * 0.96, height * 0.96);
+}
+
+function drawCentaurArcherArt(ctx, width, height) {
+  const frame = Math.max(2, Math.floor(width * 0.05));
+  const innerX = frame;
+  const innerY = frame;
+  const innerW = width - frame * 2;
+  const innerH = height - frame * 2;
+  const horizonY = innerY + innerH * 0.56;
+
+  const skyGradient = ctx.createLinearGradient(0, innerY, 0, innerY + innerH);
+  skyGradient.addColorStop(0, "#4f6f8d");
+  skyGradient.addColorStop(0.36, "#7f92a1");
+  skyGradient.addColorStop(0.68, "#657764");
+  skyGradient.addColorStop(1, "#4a5e45");
+  ctx.fillStyle = skyGradient;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  const sunX = innerX + innerW * 0.19;
+  const sunY = innerY + innerH * 0.22;
+  const sunGlow = ctx.createRadialGradient(sunX, sunY, 3, sunX, sunY, innerW * 0.27);
+  sunGlow.addColorStop(0, "rgba(255, 229, 171, 0.9)");
+  sunGlow.addColorStop(1, "rgba(255, 229, 171, 0)");
+  ctx.fillStyle = sunGlow;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  ctx.fillStyle = "rgba(83, 88, 106, 0.58)";
+  ctx.beginPath();
+  ctx.moveTo(innerX, horizonY);
+  ctx.lineTo(innerX + innerW * 0.13, innerY + innerH * 0.45);
+  ctx.lineTo(innerX + innerW * 0.24, innerY + innerH * 0.52);
+  ctx.lineTo(innerX + innerW * 0.37, innerY + innerH * 0.41);
+  ctx.lineTo(innerX + innerW * 0.53, innerY + innerH * 0.55);
+  ctx.lineTo(innerX + innerW * 0.7, innerY + innerH * 0.43);
+  ctx.lineTo(innerX + innerW * 0.87, innerY + innerH * 0.56);
+  ctx.lineTo(innerX + innerW, horizonY);
+  ctx.closePath();
+  ctx.fill();
+
+  const foothill = ctx.createLinearGradient(0, horizonY - innerH * 0.04, 0, innerY + innerH);
+  foothill.addColorStop(0, "#5e704f");
+  foothill.addColorStop(1, "#2f3f2f");
+  ctx.fillStyle = foothill;
+  ctx.fillRect(innerX, horizonY - innerH * 0.04, innerW, innerH - (horizonY - innerY));
+
+  for (let i = 0; i < 24; i += 1) {
+    const gx = innerX + (innerW * (i + 0.2)) / 24;
+    const gy = horizonY + innerH * (0.1 + (i % 4) * 0.03);
+    ctx.strokeStyle = i % 2 === 0 ? "rgba(170, 197, 132, 0.24)" : "rgba(109, 145, 89, 0.22)";
+    ctx.lineWidth = Math.max(1, innerW * 0.003);
+    ctx.beginPath();
+    ctx.moveTo(gx, gy + innerH * 0.17);
+    ctx.lineTo(gx + innerW * 0.009, gy + innerH * 0.12);
+    ctx.stroke();
+  }
+
+  const spriteLook = {
+    horse: "#7a5f44",
+    horseShade: "#4c3426",
+    skin: "#bb936b",
+    armor: "#916d4b",
+    mane: "#493121",
+    weapon: "longbow+sword"
+  };
+  const spriteCanvas = createArtCanvas(220, 170);
+  const spriteCtx = spriteCanvas.getContext("2d");
+  drawCentaurCombatSprite(spriteCtx, spriteLook, "player", spriteCanvas.width, spriteCanvas.height);
+
+  const spriteW = innerW * 0.58;
+  const spriteH = innerH * 0.86;
+  const spriteX = innerX + innerW * 0.48 - spriteW * 0.5;
+  const spriteY = innerY + innerH * 0.64 - spriteH * 0.54;
+  ctx.drawImage(spriteCanvas, spriteX, spriteY, spriteW, spriteH);
+
+  const badgeW = innerW * 0.24;
+  const badgeH = innerH * 0.2;
+  const badgeX = innerX + innerW * 0.04;
+  const badgeY = innerY + innerH * 0.72;
+  const badge = ctx.createLinearGradient(badgeX, badgeY, badgeX, badgeY + badgeH);
+  badge.addColorStop(0, "rgba(22, 30, 28, 0.72)");
+  badge.addColorStop(1, "rgba(12, 18, 17, 0.88)");
+  ctx.fillStyle = badge;
+  ctx.fillRect(badgeX, badgeY, badgeW, badgeH);
+  ctx.strokeStyle = "rgba(217, 188, 126, 0.55)";
+  ctx.lineWidth = 1.2;
+  ctx.strokeRect(badgeX, badgeY, badgeW, badgeH);
+  ctx.fillStyle = "#ead8af";
+  ctx.font = `bold ${Math.max(11, Math.floor(innerH * 0.09))}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Centaur", badgeX + badgeW * 0.5, badgeY + badgeH * 0.5);
+  ctx.textBaseline = "alphabetic";
+
+  const vignette = ctx.createRadialGradient(width * 0.5, height * 0.5, width * 0.25, width * 0.5, height * 0.5, width * 0.9);
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.4)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  drawFrameBorder(ctx, width, height);
+}
+
+function drawCentaurTokenArt(ctx, size) {
+  const sky = ctx.createLinearGradient(0, 0, 0, size);
+  sky.addColorStop(0, "#8ba2ab");
+  sky.addColorStop(1, "#4d5f45");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.fillStyle = "#6c7a52";
+  ctx.fillRect(0, size * 0.62, size, size * 0.38);
+
+  const centerX = size * 0.52;
+  const centerY = size * 0.6;
+  const scale = size / 64;
+
+  ctx.fillStyle = "#3f2819";
+  ctx.beginPath();
+  ctx.ellipse(centerX - 10 * scale, centerY + 1 * scale, 16 * scale, 9 * scale, -0.08, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillRect(centerX - 20 * scale, centerY + 7 * scale, 3 * scale, 13 * scale);
+  ctx.fillRect(centerX - 9 * scale, centerY + 8 * scale, 3 * scale, 13 * scale);
+  ctx.fillRect(centerX + 2 * scale, centerY + 7 * scale, 3 * scale, 13 * scale);
+  ctx.fillRect(centerX + 12 * scale, centerY + 6 * scale, 3 * scale, 13 * scale);
+
+  ctx.fillStyle = "#6f4932";
+  ctx.fillRect(centerX - 8 * scale, centerY - 11 * scale, 9 * scale, 13 * scale);
+  ctx.beginPath();
+  ctx.arc(centerX - 3 * scale, centerY - 15 * scale, 4.6 * scale, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = "#d9b070";
+  ctx.lineWidth = 2.2 * scale;
+  ctx.beginPath();
+  ctx.arc(centerX + 11 * scale, centerY - 10 * scale, 7 * scale, Math.PI * 0.5, Math.PI * 1.6, true);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#ede7d2";
+  ctx.lineWidth = 1.15 * scale;
+  ctx.beginPath();
+  ctx.moveTo(centerX + 6 * scale, centerY - 16 * scale);
+  ctx.lineTo(centerX + 7 * scale, centerY - 4 * scale);
+  ctx.stroke();
+
+  ctx.strokeStyle = "#f2e0bd";
+  ctx.lineWidth = 1.7 * scale;
+  ctx.beginPath();
+  ctx.moveTo(centerX + 2 * scale, centerY - 10 * scale);
+  ctx.lineTo(centerX + 20 * scale, centerY - 10 * scale);
+  ctx.stroke();
+
+  ctx.fillStyle = "#f0e8d0";
+  ctx.beginPath();
+  ctx.moveTo(centerX + 20 * scale, centerY - 10 * scale);
+  ctx.lineTo(centerX + 16 * scale, centerY - 12 * scale);
+  ctx.lineTo(centerX + 16 * scale, centerY - 8 * scale);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawGenericRaceArt(ctx, width, height, race) {
+  const frame = Math.max(2, Math.floor(width * 0.05));
+  const innerX = frame;
+  const innerY = frame;
+  const innerW = width - frame * 2;
+  const innerH = height - frame * 2;
+  const dark = "#1a2322";
+  const accent = race.color || "#5e6d5f";
+  const token = race.token || "?";
+
+  const bgGradient = ctx.createLinearGradient(0, innerY, 0, innerY + innerH);
+  bgGradient.addColorStop(0, "#6b7e83");
+  bgGradient.addColorStop(0.55, "#4f635f");
+  bgGradient.addColorStop(1, dark);
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  ctx.strokeStyle = "rgba(235, 225, 194, 0.27)";
+  ctx.lineWidth = Math.max(1, innerW * 0.01);
+  ctx.strokeRect(innerX + innerW * 0.07, innerY + innerH * 0.1, innerW * 0.86, innerH * 0.8);
+
+  ctx.fillStyle = accent;
+  ctx.beginPath();
+  ctx.moveTo(innerX + innerW * 0.5, innerY + innerH * 0.14);
+  ctx.lineTo(innerX + innerW * 0.74, innerY + innerH * 0.32);
+  ctx.lineTo(innerX + innerW * 0.64, innerY + innerH * 0.79);
+  ctx.lineTo(innerX + innerW * 0.36, innerY + innerH * 0.79);
+  ctx.lineTo(innerX + innerW * 0.26, innerY + innerH * 0.32);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = "#f7efd2";
+  ctx.font = `bold ${Math.floor(innerH * 0.42)}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(token, innerX + innerW * 0.5, innerY + innerH * 0.52);
+
+  drawFrameBorder(ctx, width, height);
+}
+
+function drawRandomRaceArt(ctx, width, height) {
+  const frame = Math.max(2, Math.floor(width * 0.05));
+  const innerX = frame;
+  const innerY = frame;
+  const innerW = width - frame * 2;
+  const innerH = height - frame * 2;
+  const bgGradient = ctx.createLinearGradient(innerX, innerY, innerX + innerW, innerY + innerH);
+  bgGradient.addColorStop(0, "#495a5f");
+  bgGradient.addColorStop(1, "#233337");
+  ctx.fillStyle = bgGradient;
+  ctx.fillRect(innerX, innerY, innerW, innerH);
+
+  ctx.fillStyle = "#e8d3a5";
+  ctx.font = `bold ${Math.floor(innerH * 0.27)}px Georgia, serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText("Random", innerX + innerW * 0.5, innerY + innerH * 0.4);
+
+  ctx.fillStyle = "#f3e6c9";
+  ctx.font = `bold ${Math.floor(innerH * 0.35)}px Georgia, serif`;
+  ctx.fillText("?", innerX + innerW * 0.5, innerY + innerH * 0.67);
+
+  drawFrameBorder(ctx, width, height);
+}
+
+function getCentaurCombatLook(unit) {
+  const fallback = CENTAUR_COMBAT_SPRITE_LOOKUP.recon;
+  if (!unit?.archetypeId) {
+    return fallback;
+  }
+  return CENTAUR_COMBAT_SPRITE_LOOKUP[unit.archetypeId] || fallback;
+}
+
+function drawCentaurCombatSprite(drawCtx, look, side, width, height) {
+  const shadeTint = side === "enemy" ? "rgba(88, 34, 30, 0.15)" : "rgba(40, 70, 44, 0.08)";
+
+  drawCtx.clearRect(0, 0, width, height);
+
+  drawCtx.fillStyle = "rgba(8, 11, 15, 0.35)";
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.46, height * 0.84, width * 0.3, height * 0.1, -0.05, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  const horseBody = drawCtx.createLinearGradient(width * 0.2, height * 0.42, width * 0.72, height * 0.74);
+  horseBody.addColorStop(0, look.horse);
+  horseBody.addColorStop(1, look.horseShade);
+  drawCtx.fillStyle = horseBody;
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.49, height * 0.56, width * 0.24, height * 0.19, -0.04, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  drawCtx.fillStyle = "rgba(245, 223, 184, 0.1)";
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.36, height * 0.53, width * 0.09, height * 0.07, -0.14, 0, Math.PI * 2);
+  drawCtx.fill();
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.6, height * 0.6, width * 0.1, height * 0.08, 0.2, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  drawCtx.fillStyle = "rgba(28, 20, 14, 0.35)";
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.49, height * 0.62, width * 0.2, height * 0.08, 0, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  drawCtx.strokeStyle = look.horseShade;
+  drawCtx.lineWidth = Math.max(2, width * 0.03);
+  drawCtx.beginPath();
+  drawCtx.moveTo(width * 0.24, height * 0.52);
+  drawCtx.quadraticCurveTo(width * 0.16, height * 0.57, width * 0.1, height * 0.7);
+  drawCtx.stroke();
+
+  function drawLeg(x, y, legWidth, legHeight, kneeShift) {
+    const grad = drawCtx.createLinearGradient(x, y, x, y + legHeight);
+    grad.addColorStop(0, look.horse);
+    grad.addColorStop(1, look.horseShade);
+    drawCtx.fillStyle = grad;
+    drawCtx.beginPath();
+    drawCtx.moveTo(x, y);
+    drawCtx.lineTo(x + legWidth, y + kneeShift);
+    drawCtx.lineTo(x + legWidth - 2, y + legHeight);
+    drawCtx.lineTo(x - 2, y + legHeight);
+    drawCtx.closePath();
+    drawCtx.fill();
+    drawCtx.fillStyle = "#1a2027";
+    drawCtx.fillRect(x - 1, y + legHeight - 3, legWidth + 2, 4);
+  }
+
+  drawLeg(width * 0.29, height * 0.66, width * 0.06, height * 0.22, height * 0.03);
+  drawLeg(width * 0.39, height * 0.67, width * 0.06, height * 0.21, height * 0.02);
+  drawLeg(width * 0.51, height * 0.66, width * 0.06, height * 0.22, height * 0.03);
+  drawLeg(width * 0.61, height * 0.65, width * 0.065, height * 0.24, height * 0.03);
+
+  if (look.weapon === "greataxe") {
+    drawCtx.fillStyle = "rgba(195, 200, 208, 0.92)";
+    drawCtx.fillRect(width * 0.34, height * 0.48, width * 0.28, height * 0.17);
+    drawCtx.fillRect(width * 0.31, height * 0.56, width * 0.34, height * 0.08);
+  } else if (look.weapon === "poleaxe") {
+    drawCtx.fillStyle = "rgba(142, 151, 143, 0.92)";
+    drawCtx.fillRect(width * 0.35, height * 0.5, width * 0.26, height * 0.15);
+    drawCtx.fillRect(width * 0.33, height * 0.57, width * 0.31, height * 0.06);
+  } else if (look.weapon.includes("longbow")) {
+    drawCtx.fillStyle = "rgba(146, 108, 72, 0.85)";
+    drawCtx.fillRect(width * 0.35, height * 0.52, width * 0.23, height * 0.12);
+  }
+
+  const torso = drawCtx.createLinearGradient(width * 0.4, height * 0.28, width * 0.53, height * 0.55);
+  torso.addColorStop(0, look.skin);
+  torso.addColorStop(1, "#8d694d");
+  drawCtx.fillStyle = torso;
+  drawCtx.fillRect(width * 0.41, height * 0.3, width * 0.14, height * 0.25);
+
+  const head = drawCtx.createLinearGradient(width * 0.42, height * 0.18, width * 0.51, height * 0.3);
+  head.addColorStop(0, look.skin);
+  head.addColorStop(1, "#947053");
+  drawCtx.fillStyle = head;
+  drawCtx.beginPath();
+  drawCtx.ellipse(width * 0.48, height * 0.23, width * 0.06, height * 0.075, 0.12, 0, Math.PI * 2);
+  drawCtx.fill();
+
+  drawCtx.fillStyle = look.mane;
+  drawCtx.beginPath();
+  drawCtx.arc(width * 0.46, height * 0.2, width * 0.035, Math.PI * 0.9, Math.PI * 2.1);
+  drawCtx.fill();
+
+  if (look.weapon === "greataxe") {
+    drawCtx.fillStyle = "rgba(190, 198, 208, 0.95)";
+    drawCtx.fillRect(width * 0.39, height * 0.28, width * 0.18, height * 0.18);
+    drawCtx.fillRect(width * 0.37, height * 0.36, width * 0.21, height * 0.09);
+    drawCtx.fillRect(width * 0.42, height * 0.17, width * 0.11, height * 0.03);
+  } else if (look.weapon.includes("longbow")) {
+    drawCtx.fillStyle = "rgba(144, 108, 73, 0.88)";
+    drawCtx.fillRect(width * 0.39, height * 0.32, width * 0.16, height * 0.15);
+  } else if (look.weapon === "poleaxe") {
+    drawCtx.fillStyle = "rgba(139, 150, 141, 0.92)";
+    drawCtx.fillRect(width * 0.39, height * 0.31, width * 0.17, height * 0.16);
+    drawCtx.fillRect(width * 0.37, height * 0.38, width * 0.2, height * 0.07);
+  } else {
+    drawCtx.fillStyle = "rgba(146, 144, 129, 0.82)";
+    drawCtx.fillRect(width * 0.41, height * 0.36, width * 0.12, height * 0.08);
+  }
+
+  drawCtx.strokeStyle = look.skin;
+  drawCtx.lineWidth = Math.max(2, width * 0.024);
+  drawCtx.beginPath();
+  drawCtx.moveTo(width * 0.54, height * 0.38);
+  drawCtx.lineTo(width * 0.61, height * 0.44);
+  drawCtx.moveTo(width * 0.43, height * 0.37);
+  drawCtx.lineTo(width * 0.5, height * 0.45);
+  drawCtx.stroke();
+
+  if (look.weapon.includes("bow")) {
+    const long = look.weapon.startsWith("long");
+    drawCtx.strokeStyle = "#d6b07a";
+    drawCtx.lineWidth = Math.max(2, width * 0.016);
+    drawCtx.beginPath();
+    drawCtx.arc(width * 0.67, height * 0.44, long ? width * 0.088 : width * 0.065, Math.PI * 0.45, Math.PI * 1.58, true);
+    drawCtx.stroke();
+
+    drawCtx.strokeStyle = "#efe6cd";
+    drawCtx.lineWidth = 1.3;
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.64, long ? height * 0.36 : height * 0.39);
+    drawCtx.lineTo(width * 0.646, long ? height * 0.54 : height * 0.52);
+    drawCtx.stroke();
+
+    drawCtx.strokeStyle = "#f0dfbb";
+    drawCtx.lineWidth = Math.max(1.8, width * 0.012);
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.59, height * 0.43);
+    drawCtx.lineTo(long ? width * 0.79 : width * 0.73, height * 0.41);
+    drawCtx.stroke();
+
+    drawCtx.fillStyle = "#bec4ca";
+    drawCtx.beginPath();
+    drawCtx.moveTo(long ? width * 0.79 : width * 0.73, height * 0.41);
+    drawCtx.lineTo(long ? width * 0.76 : width * 0.7, height * 0.395);
+    drawCtx.lineTo(long ? width * 0.76 : width * 0.7, height * 0.425);
+    drawCtx.closePath();
+    drawCtx.fill();
+  }
+
+  if (look.weapon.includes("sword")) {
+    drawCtx.strokeStyle = "#d6dce3";
+    drawCtx.lineWidth = Math.max(2, width * 0.012);
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.52, height * 0.44);
+    drawCtx.lineTo(width * 0.6, height * 0.54);
+    drawCtx.stroke();
+    drawCtx.fillStyle = "#9d8252";
+    drawCtx.fillRect(width * 0.5, height * 0.42, width * 0.03, height * 0.028);
+  }
+
+  if (look.weapon === "greataxe" || look.weapon === "poleaxe") {
+    const long = look.weapon === "poleaxe";
+    drawCtx.strokeStyle = "#7b5d3e";
+    drawCtx.lineWidth = long ? Math.max(2.5, width * 0.018) : Math.max(2.8, width * 0.021);
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.57, height * 0.41);
+    drawCtx.lineTo(width * 0.74, long ? height * 0.8 : height * 0.73);
+    drawCtx.stroke();
+
+    drawCtx.fillStyle = "#c2c8cf";
+    drawCtx.beginPath();
+    drawCtx.moveTo(width * 0.545, height * 0.38);
+    drawCtx.lineTo(width * 0.635, height * 0.32);
+    drawCtx.lineTo(width * 0.68, height * 0.41);
+    drawCtx.lineTo(width * 0.59, height * 0.45);
+    drawCtx.closePath();
+    drawCtx.fill();
+  }
+
+  drawCtx.fillStyle = shadeTint;
+  drawCtx.fillRect(0, 0, width, height);
+}
+
+function getCentaurCombatSpriteCanvas(unit, side) {
+  const look = getCentaurCombatLook(unit);
+  const key = `${unit.archetypeId || "recon"}:${side}`;
+  if (centaurCombatSpriteCache.has(key)) {
+    return centaurCombatSpriteCache.get(key);
+  }
+
+  const spriteCanvas = createArtCanvas(CENTAUR_COMBAT_SPRITE_NATIVE_WIDTH, CENTAUR_COMBAT_SPRITE_NATIVE_HEIGHT);
+  const drawCtx = spriteCanvas.getContext("2d");
+  drawCentaurCombatSprite(drawCtx, look, side, spriteCanvas.width, spriteCanvas.height);
+  centaurCombatSpriteCache.set(key, spriteCanvas);
+  return spriteCanvas;
+}
+
+function drawCombatRing(cx, cy, stroke, width = 2, radius = COMBAT_TILE_SIZE * 0.28) {
+  ctx.strokeStyle = stroke;
+  ctx.lineWidth = width;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+}
+
+function getRaceArtCanvas(race, variant) {
+  const size = variant === "map"
+    ? { width: MAP_ART_SIZE, height: MAP_ART_SIZE }
+    : { width: RACE_PREVIEW_WIDTH, height: RACE_PREVIEW_HEIGHT };
+  const cacheKey = `${race.id}:${variant}:${size.width}x${size.height}`;
+  if (raceArtCache.has(cacheKey)) {
+    return raceArtCache.get(cacheKey);
+  }
+
+  const artCanvas = createArtCanvas(size.width, size.height);
+  const artCtx = artCanvas.getContext("2d");
+  if (race.artKey === "centaur-archer") {
+    if (variant === "map") {
+      drawCentaurTokenArt(artCtx, size.width);
+    } else {
+      drawCentaurArcherArt(artCtx, size.width, size.height);
+    }
+  } else {
+    drawGenericRaceArt(artCtx, size.width, size.height, race);
+  }
+  raceArtCache.set(cacheKey, artCanvas);
+  return artCanvas;
+}
+
+function drawRacePreview(previewCanvas, raceChoiceId) {
+  if (!previewCanvas) return;
+  const previewCtx = previewCanvas.getContext("2d");
+  previewCtx.clearRect(0, 0, previewCanvas.width, previewCanvas.height);
+
+  if (raceChoiceId === RANDOM_RACE_ID) {
+    drawRandomRaceArt(previewCtx, previewCanvas.width, previewCanvas.height);
+    return;
+  }
+
+  const race = getRaceById(raceChoiceId);
+  const art = getRaceArtCanvas(race, "setup");
+  previewCtx.drawImage(art, 0, 0, previewCanvas.width, previewCanvas.height);
+}
+
+function updateSetupRacePreviews() {
+  drawRacePreview(playerRacePreviewEl, playerRaceSelectEl.value || RANDOM_RACE_ID);
+  drawRacePreview(enemyRacePreviewEl, enemyRaceSelectEl.value || RANDOM_RACE_ID);
+}
+
 function toSubscript(n) {
   return String(n)
     .split("")
@@ -354,7 +1002,18 @@ function formatUnitStatLine(unit, includeCurrentMove = false) {
   const moveText = includeCurrentMove
     ? `${unit.currentCombatMp}/${unit.maxCombatMp}`
     : `${unit.maxCombatMp}`;
-  return `${unitName(unit)} HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness} MOV ${moveText}`;
+  return `HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness} MOV ${moveText}`;
+}
+
+function formatUnitIdentity(unit) {
+  if (!unit.unitClass) {
+    return unitName(unit);
+  }
+  return `${unitName(unit)} ${unit.unitClass}`;
+}
+
+function formatUnitLoadout(unit) {
+  return unit.loadout ? `<div>${unit.loadout}</div>` : "";
 }
 
 function setTooltipHtml(html, x, y) {
@@ -1170,23 +1829,51 @@ function drawStackToken(side, stack) {
 
   const cx = stack.x * TILE_SIZE + TILE_SIZE / 2;
   const cy = stack.y * TILE_SIZE + TILE_SIZE / 2;
+  const race = getRaceById(stack.raceId);
+  const radius = TILE_SIZE * 0.33;
 
-  ctx.fillStyle = stack.color;
   ctx.beginPath();
-  ctx.arc(cx, cy, TILE_SIZE * 0.31, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.closePath();
+  ctx.save();
+  ctx.clip();
+
+  if (race?.artKey === "centaur-archer") {
+    const art = getRaceArtCanvas(race, "map");
+    ctx.drawImage(art, cx - radius, cy - radius, radius * 2, radius * 2);
+  } else {
+    const fillGradient = ctx.createLinearGradient(cx, cy - radius, cx, cy + radius);
+    fillGradient.addColorStop(0, stack.color);
+    fillGradient.addColorStop(1, "#1d2620");
+    ctx.fillStyle = fillGradient;
+    ctx.fillRect(cx - radius, cy - radius, radius * 2, radius * 2);
+  }
+  ctx.restore();
+
+  ctx.strokeStyle = "rgba(15, 16, 12, 0.85)";
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+  ctx.stroke();
 
   if (hoveredEntity?.type === "mapStack" && hoveredEntity.side === side) {
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(cx, cy, radius + 2, 0, Math.PI * 2);
     ctx.stroke();
     ctx.lineWidth = 1;
   }
 
-  ctx.fillStyle = "#ffffff";
-  ctx.font = "bold 18px sans-serif";
+  const badgeText = race?.artKey ? toSubscript(count) : `${stack.token}${toSubscript(count)}`;
+  ctx.fillStyle = "rgba(15, 16, 12, 0.82)";
+  ctx.fillRect(cx - radius + 5, cy + radius - 22, 34, 18);
+  ctx.fillStyle = "#f6f2e0";
+  ctx.font = `bold ${race?.artKey ? 15 : 13}px Georgia, serif`;
   ctx.textAlign = "center";
-  ctx.fillText(`${stack.token}${toSubscript(count)}`, cx, cy + 6);
+  ctx.textBaseline = "middle";
+  ctx.fillText(badgeText, cx - radius + 22, cy + radius - 13);
+  ctx.textBaseline = "alphabetic";
 }
 
 function drawCombatUnits() {
@@ -1201,37 +1888,48 @@ function drawCombatUnits() {
     for (const unit of getAliveUnits(side)) {
       const cx = unit.x * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
       const cy = unit.y * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+      const isCentaurSprite = Boolean(unit.archetypeId);
 
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      ctx.arc(cx, cy, COMBAT_TILE_SIZE * 0.24, 0, Math.PI * 2);
-      ctx.fill();
+      if (isCentaurSprite) {
+        const sprite = getCentaurCombatSpriteCanvas(unit, side);
+        const drawW = COMBAT_TILE_SIZE * 0.86;
+        const drawH = COMBAT_TILE_SIZE * 0.72;
+        const drawX = cx - drawW * 0.5;
+        const drawY = cy - drawH * 0.67;
+        ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+
+        const plateY = cy + COMBAT_TILE_SIZE * 0.18;
+        ctx.fillStyle = "rgba(11, 14, 18, 0.76)";
+        ctx.fillRect(cx - 23, plateY, 46, 14);
+        ctx.fillStyle = "#efe5c7";
+        ctx.font = "bold 10px Georgia, serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(unit.label || unit.id, cx, plateY + 7);
+        ctx.textBaseline = "alphabetic";
+      } else {
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(cx, cy, COMBAT_TILE_SIZE * 0.24, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#ffffff";
+        ctx.font = "bold 12px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText(unit.label || unit.id, cx, cy + 4);
+      }
 
       if (active && side === "player" && unit.id === active.id) {
-        ctx.strokeStyle = "#ffffff";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.lineWidth = 1;
+        drawCombatRing(cx, cy, "#ffffff", 3, COMBAT_TILE_SIZE * (isCentaurSprite ? 0.3 : 0.24));
       }
 
       if (hoveredEntity?.type === "combatUnit" && hoveredEntity.unitId === unit.id) {
-        ctx.strokeStyle = "#6fd3ff";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.lineWidth = 1;
+        drawCombatRing(cx, cy, "#6fd3ff", 3, COMBAT_TILE_SIZE * (isCentaurSprite ? 0.31 : 0.25));
       }
 
       if (side === "enemy" && targetableIds.has(unit.id)) {
-        ctx.strokeStyle = "#ffd34d";
-        ctx.lineWidth = 3;
-        ctx.stroke();
-        ctx.lineWidth = 1;
+        drawCombatRing(cx, cy, "#ffd34d", 3, COMBAT_TILE_SIZE * (isCentaurSprite ? 0.32 : 0.25));
       }
-
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 12px sans-serif";
-      ctx.textAlign = "center";
-      ctx.fillText(unit.label || unit.id, cx, cy + 4);
     }
   };
 
@@ -1315,7 +2013,7 @@ function buildMapStackTooltipHtml(side) {
   const stack = state.stacks[side];
   const units = getAliveUnits(side);
   const lines = units
-    .map((unit) => `<div>${formatUnitStatLine(unit, false)}</div>`)
+    .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}`)
     .join("");
   return `<strong>${stack.race} Stack (${units.length} units)</strong>${lines}`;
 }
@@ -1326,7 +2024,7 @@ function buildCombatUnitTooltipHtml(side, unit) {
     state.mode === "combat" && active && side === "enemy"
       ? `<div>Chance for ${unitName(active)} to hit: ${getHitChance(active, unit)}%</div>`
       : "";
-  return `<strong>${state.stacks[side].race} ${unitName(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${hitChanceText}`;
+  return `<strong>${state.stacks[side].race} ${formatUnitIdentity(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${formatUnitLoadout(unit)}${hitChanceText}`;
 }
 
 function updateHoveredEntity(event) {
@@ -1419,6 +2117,9 @@ function renderGameToText() {
         units: getAliveUnits("player").map((unit) => ({
           id: unit.id,
           label: unitName(unit),
+          archetypeId: unit.archetypeId || null,
+          unitClass: unit.unitClass || null,
+          loadout: unit.loadout || null,
           hp: unit.hp,
           maxHp: unit.maxHp,
           armor: unit.armor,
@@ -1442,6 +2143,9 @@ function renderGameToText() {
         units: getAliveUnits("enemy").map((unit) => ({
           id: unit.id,
           label: unitName(unit),
+          archetypeId: unit.archetypeId || null,
+          unitClass: unit.unitClass || null,
+          loadout: unit.loadout || null,
           hp: unit.hp,
           maxHp: unit.maxHp,
           armor: unit.armor,
@@ -1473,6 +2177,9 @@ function renderGameToText() {
           getAliveUnits(side).map((unit) => ({
             id: unit.id,
             label: unitName(unit),
+            archetypeId: unit.archetypeId || null,
+            unitClass: unit.unitClass || null,
+            loadout: unit.loadout || null,
             side,
             x: unit.x,
             y: unit.y,
@@ -1527,6 +2234,7 @@ function initializeSetupScreen() {
   populateRaceSelect(enemyRaceSelectEl);
   playerRaceSelectEl.value = selectedRaces.player;
   enemyRaceSelectEl.value = selectedRaces.enemy;
+  updateSetupRacePreviews();
 }
 
 function startGameFromSetup() {
@@ -1598,6 +2306,8 @@ document.addEventListener("keydown", (event) => {
 attackBtn.addEventListener("click", playerCombatAttack);
 endTurnBtn.addEventListener("click", endTurn);
 resetBtn.addEventListener("click", resetGame);
+playerRaceSelectEl.addEventListener("change", updateSetupRacePreviews);
+enemyRaceSelectEl.addEventListener("change", updateSetupRacePreviews);
 startGameBtnEl.addEventListener("click", startGameFromSetup);
 board.addEventListener("mousemove", updateHoveredEntity);
 board.addEventListener("mouseleave", clearHoveredEntity);

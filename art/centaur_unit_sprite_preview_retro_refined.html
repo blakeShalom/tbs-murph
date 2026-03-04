@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Centaur Retro Refined Preview</title>
+  <style>
+    :root {
+      color-scheme: only light;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      background: radial-gradient(circle at top, #2a3946 0%, #101821 66%);
+      font-family: "Georgia", serif;
+      color: #e8dbb9;
+    }
+
+    .sheet-frame {
+      border: 2px solid #8a6f43;
+      border-radius: 10px;
+      background: #0f1720;
+      box-shadow: 0 14px 30px rgba(0, 0, 0, 0.44);
+      padding: 10px;
+    }
+
+    canvas {
+      display: block;
+      image-rendering: pixelated;
+      border-radius: 6px;
+    }
+  </style>
+</head>
+<body>
+  <div class="sheet-frame">
+    <canvas id="sheet" width="1340" height="820"></canvas>
+  </div>
+
+  <script>
+    const sheet = document.getElementById("sheet");
+    const ctx = sheet.getContext("2d");
+    ctx.imageSmoothingEnabled = false;
+
+    const SCALE = 3;
+    const SW = 54;
+    const SH = 42;
+
+    const units = [
+      {
+        name: "Recon",
+        subtitle: "thin \u2022 shortbow \u2022 sword",
+        coat: "#8f6a48",
+        coatShade: "#5c4029",
+        torso: "#b5916b",
+        armor: "#9b957c",
+        hair: "#5a3c27",
+        weapon: "shortbow+sword"
+      },
+      {
+        name: "Brute",
+        subtitle: "plate \u2022 2h axe",
+        coat: "#6c513b",
+        coatShade: "#463224",
+        torso: "#7a6352",
+        armor: "#c2c8cf",
+        hair: "#30261e",
+        weapon: "greataxe"
+      },
+      {
+        name: "Marksman",
+        subtitle: "longbow \u2022 sword \u2022 leather",
+        coat: "#7a5e43",
+        coatShade: "#503728",
+        torso: "#9a7a5d",
+        armor: "#926d4c",
+        hair: "#4c3324",
+        weapon: "longbow+sword"
+      },
+      {
+        name: "Captain",
+        subtitle: "white coat \u2022 long axe",
+        coat: "#dfd9ce",
+        coatShade: "#a8a9a6",
+        torso: "#efe8de",
+        armor: "#909892",
+        hair: "#f4f1ea",
+        weapon: "poleaxe"
+      }
+    ];
+
+    function drawBackdrop() {
+      const g = ctx.createLinearGradient(0, 0, 0, sheet.height);
+      g.addColorStop(0, "#2f4050");
+      g.addColorStop(1, "#0f1822");
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, sheet.width, sheet.height);
+
+      ctx.strokeStyle = "rgba(223, 200, 146, 0.08)";
+      for (let x = 8; x < sheet.width; x += 14) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, sheet.height);
+        ctx.stroke();
+      }
+      for (let y = 8; y < sheet.height; y += 14) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(sheet.width, y);
+        ctx.stroke();
+      }
+    }
+
+    function pxRect(c, x, y, w, h, color) {
+      c.fillStyle = color;
+      c.fillRect(x, y, w, h);
+    }
+
+    function px(c, x, y, color) {
+      pxRect(c, x, y, 1, 1, color);
+    }
+
+    function drawCentaurSpriteToCanvas(c, u) {
+      c.clearRect(0, 0, SW, SH);
+
+      pxRect(c, 9, 33, 32, 3, "rgba(6,10,14,0.62)");
+
+      pxRect(c, 15, 18, 22, 10, u.coat);
+      pxRect(c, 10, 20, 8, 6, u.coat);
+      pxRect(c, 34, 21, 8, 5, u.coat);
+      pxRect(c, 15, 22, 12, 5, u.coatShade);
+
+      pxRect(c, 14, 27, 4, 11, u.coat);
+      pxRect(c, 20, 27, 4, 11, u.coat);
+      pxRect(c, 27, 27, 4, 11, u.coat);
+      pxRect(c, 33, 27, 4, 11, u.coat);
+
+      pxRect(c, 6, 22, 4, 4, u.hair);
+      pxRect(c, 4, 23, 3, 4, u.hair);
+
+      pxRect(c, 23, 10, 9, 9, u.torso);
+      pxRect(c, 26, 6, 6, 5, u.torso);
+      pxRect(c, 26, 5, 6, 2, u.hair);
+
+      if (u.name === "Brute") {
+        pxRect(c, 22, 10, 11, 8, u.armor);
+        pxRect(c, 20, 12, 15, 5, u.armor);
+        pxRect(c, 25, 6, 8, 2, u.armor);
+      } else if (u.name === "Marksman") {
+        pxRect(c, 22, 12, 11, 6, u.armor);
+      } else if (u.name === "Captain") {
+        pxRect(c, 22, 11, 11, 7, u.armor);
+        pxRect(c, 21, 13, 13, 4, u.armor);
+        pxRect(c, 14, 31, 4, 7, "#c8cccb");
+        pxRect(c, 20, 31, 4, 7, "#c8cccb");
+        pxRect(c, 27, 31, 4, 7, "#c8cccb");
+        pxRect(c, 33, 31, 4, 7, "#c8cccb");
+      } else {
+        pxRect(c, 24, 12, 8, 4, u.armor);
+      }
+
+      pxRect(c, 31, 12, 3, 2, u.torso);
+
+      if (u.weapon.includes("bow")) {
+        const longbow = u.weapon.startsWith("long");
+        pxRect(c, 35, 10, 1, 10, "#d7b57e");
+        pxRect(c, 36, 9, 1, longbow ? 12 : 10, "#d7b57e");
+        pxRect(c, 37, 10, 1, 10, "#d7b57e");
+        px(c, 36, 9, "#f1e7cc");
+        px(c, 36, 19, "#f1e7cc");
+        pxRect(c, 31, 14, longbow ? 11 : 8, 1, "#f3e5c3");
+        px(c, longbow ? 42 : 39, 14, "#bcc3ca");
+      }
+
+      if (u.weapon.includes("sword")) {
+        pxRect(c, 30, 16, 5, 1, "#d6dce2");
+        pxRect(c, 34, 17, 1, 4, "#d6dce2");
+        pxRect(c, 29, 16, 1, 2, "#9c7f51");
+      }
+
+      if (u.weapon === "greataxe" || u.weapon === "poleaxe") {
+        const long = u.weapon === "poleaxe";
+        pxRect(c, 33, 12, 1, long ? 15 : 12, "#7b5c3d");
+        pxRect(c, 34, 14, 1, long ? 14 : 11, "#7b5c3d");
+        pxRect(c, 30, 10, 3, 2, "#c3c9d0");
+        pxRect(c, 28, 9, 2, 3, "#c3c9d0");
+      }
+
+      for (let x = 13; x <= 39; x += 1) {
+        px(c, x, 28, "rgba(21,17,14,0.28)");
+      }
+    }
+
+    function drawCard(i, u) {
+      const cardW = 320;
+      const cardH = 730;
+      const gap = 12;
+      const x = 18 + i * (cardW + gap);
+      const y = 45;
+
+      const frame = ctx.createLinearGradient(x, y, x, y + cardH);
+      frame.addColorStop(0, "#c7b186");
+      frame.addColorStop(1, "#7e643d");
+      ctx.fillStyle = frame;
+      ctx.fillRect(x, y, cardW, cardH);
+
+      ctx.fillStyle = "#121b24";
+      ctx.fillRect(x + 4, y + 4, cardW - 8, cardH - 8);
+
+      const panel = ctx.createLinearGradient(x, y + 95, x, y + cardH - 18);
+      panel.addColorStop(0, "#5d7078");
+      panel.addColorStop(1, "#274338");
+      ctx.fillStyle = panel;
+      ctx.fillRect(x + 16, y + 102, cardW - 32, cardH - 120);
+
+      ctx.fillStyle = "#e8d8b4";
+      ctx.font = "bold 52px Georgia, serif";
+      ctx.textAlign = "center";
+      ctx.fillText(u.name, x + cardW / 2, y + 58);
+
+      ctx.font = "21px Georgia, serif";
+      ctx.fillStyle = "#d7c7a3";
+      ctx.fillText(u.subtitle, x + cardW / 2, y + 88);
+
+      const spriteCanvas = document.createElement("canvas");
+      spriteCanvas.width = SW;
+      spriteCanvas.height = SH;
+      const sctx = spriteCanvas.getContext("2d");
+      sctx.imageSmoothingEnabled = false;
+      drawCentaurSpriteToCanvas(sctx, u);
+
+      const drawW = SW * SCALE;
+      const drawH = SH * SCALE;
+      const sx = x + Math.floor((cardW - drawW) / 2);
+      const sy = y + 300;
+
+      ctx.fillStyle = "rgba(16, 21, 26, 0.55)";
+      ctx.fillRect(sx - 14, sy - 12, drawW + 28, drawH + 24);
+      ctx.strokeStyle = "rgba(148, 120, 70, 0.9)";
+      ctx.strokeRect(sx - 14, sy - 12, drawW + 28, drawH + 24);
+
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(spriteCanvas, sx, sy, drawW, drawH);
+    }
+
+    drawBackdrop();
+    units.forEach((u, i) => drawCard(i, u));
+  </script>
+</body>
+</html>

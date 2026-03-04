@@ -45,7 +45,7 @@ body {
   border-radius: 10px;
   padding: 1rem;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
 .setup-screen h2 {
@@ -63,6 +63,36 @@ body {
   border-radius: 6px;
   border: 1px solid #a9a284;
   background: #fffdf3;
+}
+
+.race-preview-grid {
+  display: grid;
+  gap: 0.6rem;
+  grid-template-columns: 1fr;
+}
+
+.race-preview-card {
+  margin: 0;
+  padding: 0.45rem;
+  border: 1px solid #c8bc95;
+  background: #f5eed9;
+  border-radius: 8px;
+}
+
+.race-preview-card figcaption {
+  margin-bottom: 0.3rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #544b37;
+}
+
+.race-preview-card canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  border: 1px solid #bba874;
+  border-radius: 6px;
+  background: #10161f;
 }
 
 .setup-screen.hidden {

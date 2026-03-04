@@ -79,6 +79,103 @@ Validation runs for this feature:
   - `output/web-game/stats-combat-check/combat-check.json`
   - Confirmed no immediate retaliation on player attack in same action (attacker HP unchanged immediately after strike).
 
+- Added first race artwork pass for a new race: `Centaur Clans`.
+  - Setup screen now includes dedicated race preview canvases for player/computer selections.
+  - Implemented HOMM3-inspired centaur archer painted art renderer for setup preview and a dedicated compact token renderer for map scale.
+  - Integrated map token drawing to use race mini-art for centaur stacks while preserving stack-count overlays.
+- UI updates:
+  - Added setup preview layout in `index.html` and styling in `styles.css`.
+  - Kept previews single-column in setup panel so artwork remains legible.
+- Validation runs:
+  - Skill Playwright client (required):
+    - `output/web-game/centaur-art-setup/shot-0.png`, `state-0.json`
+    - `output/web-game/centaur-art-map/shot-0.png`, `shot-1.png`, `state-0.json`, `state-1.json`
+    - No `errors-*.json` produced in these runs.
+  - Additional full-page Playwright verification with explicit race selection:
+    - `output/web-game/centaur-art-check/setup-centaur.png`
+    - `output/web-game/centaur-art-check/map-centaur.png`
+    - `output/web-game/centaur-art-check/state.json` (player race confirmed as `Centaur Clans`).
+  - Regression tests: `npm test` passing (44/44).
+
+TODO / follow-ups:
+- Add race-specific art for remaining races to avoid mixed quality between centaur and generic heraldic placeholders.
+- Add a setup control to preview random race art roll (currently random uses a dedicated "Random" card).
+
+- Built standalone centaur unit sprite preview sheet (not wired into runtime yet, pending user approval).
+  - Source art page: `art/centaur_unit_sprite_preview.html`
+  - Rendered preview image: `output/web-game/centaur-unit-sprites-preview.png`
+  - Units represented:
+    - Recon (thin build, short bow, light sword)
+    - Brute (plate armor, two-handed axe)
+    - Marksman (longbow, short sword, leather armor)
+    - Captain (white coat, medium armor, long axe)
+- Added centaur archetype data model in runtime and random assignment at stack creation.
+  - `Centaur Clans` units now randomly roll one of: Recon, Brute, Marksman, Captain.
+  - Each archetype uses its own random stat ranges (HP/ATK/DMG/ARM/EVA/MOV).
+  - Archetype metadata (`unitClass`, `loadout`) is now included in tooltips and `render_game_to_text` payload.
+- Validation:
+  - Unit tests: `npm test` passing (44/44).
+  - Skill Playwright run:
+    - `output/web-game/centaur-archetypes/shot-0.png`
+    - `output/web-game/centaur-archetypes/shot-1.png`
+    - `output/web-game/centaur-archetypes/state-0.json`
+    - `output/web-game/centaur-archetypes/state-1.json`
+  - In this run, `state-0.json` shows Centaur Clans roster containing mixed random archetypes (Recon/Brute/Marksman/Captain).
+  - No `errors-*.json` emitted for centaur archetype run.
+  - Post-tooltip text cleanup: reran `npm test` (44/44) and reran skill client (`iterations=1`) to ensure no regressions.
+
+TODO / follow-ups:
+- Wait for user approval on `output/web-game/centaur-unit-sprites-preview.png` before integrating those specific sprites into combat/unit rendering.
+
+- Created retro pixel-art second-pass preview sheet for centaur units (higher-resolution presentation, pixel style).
+  - Source page: `art/centaur_unit_sprite_preview_pixel.html`
+  - Rendered preview: `output/web-game/centaur-unit-sprites-preview-pixel.png`
+  - Includes Recon, Brute, Marksman, Captain with distinct weapon/armor silhouettes.
+- This pass is still approval-only; not yet integrated into runtime rendering.
+
+- Created refined retro pass: less blocky than the prior pixel pass while retaining retro readability.
+  - Source page: `art/centaur_unit_sprite_preview_retro_refined.html`
+  - Rendered preview: `output/web-game/centaur-unit-sprites-preview-retro-refined.png`
+  - This version is pending user approval before any runtime integration.
+
+- Created higher-detail HOMM3-inspired sprite sheet pass to increase detail density beyond retro pixel pass.
+  - Source page: `art/centaur_unit_sprite_preview_homm3_detailed.html`
+  - Rendered preview: `output/web-game/centaur-unit-sprites-preview-homm3-detailed.png`
+  - Pending user approval before runtime integration.
+
+- User approved HOMM3-style centaur unit art for current runtime.
+- Integrated centaur combat unit sprite rendering into `game.js`.
+  - Added cached sprite painter path keyed by centaur archetype (`recon`, `brute`, `marksman`, `captain`) and side.
+  - Updated combat rendering to draw sprite art for centaur units and keep legacy circular tokens for non-centaur units.
+  - Added selection/hover/target rings compatible with sprite rendering.
+  - Added archetype metadata (`archetypeId`) into `render_game_to_text` payload for easier verification.
+- Validation:
+  - Unit tests: `npm test` passing (44/44).
+  - Required skill Playwright client run:
+    - `output/web-game/centaur-sprites-integrated-skill/shot-0.png`
+    - `output/web-game/centaur-sprites-integrated-skill/state-0.json` (captured combat mode with centaur archetypes rendered)
+    - No `errors-*.json` emitted in this run.
+  - Additional full-page verification with forced centaur selection + debug combat start:
+    - `output/web-game/centaur-homm3-integrated/combat-centaur-homm3.png`
+    - `output/web-game/centaur-homm3-integrated/state.json`
+
+TODO / follow-ups:
+- When swapping to external PNG sheets later, replace `getCentaurCombatSpriteCanvas(...)` internals with image loading while keeping the same draw call site in `drawCombatUnits`.
+
+- Updated Centaur main race portrait quality to match the approved HOMM3-style unit-art direction.
+  - Replaced `drawCentaurArcherArt(...)` with a higher-detail painted scene and centered centaur archer render using the same visual language as combat sprites.
+  - Preserved existing frame treatment and map token behavior.
+- Validation for portrait-quality update:
+  - Unit tests: `npm test` passing (44/44).
+  - Required skill Playwright client runs:
+    - `output/web-game/centaur-race-photo-setup-skill/shot-0.png`, `state-0.json`
+    - `output/web-game/centaur-race-photo-map-skill/shot-0.png`, `state-0.json`
+    - No `errors-*.json` emitted.
+  - Additional full-page verification with forced centaur selection:
+    - `output/web-game/centaur-race-photo-check/setup-centaur-main-race-photo.png`
+    - `output/web-game/centaur-race-photo-check/map-after-race-photo-update.png`
+    - `output/web-game/centaur-race-photo-check/state.json`
+
 TODO / follow-ups:
 - Current `tests/` cover modular `src/` runtime, not the active `game.js` entrypoint; add tests around stat formulas and tooltip payloads if `game.js` remains the source of truth.
 - Consider truncating map stack tooltip lines for very large stacks on smaller screens.

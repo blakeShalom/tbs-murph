@@ -14,6 +14,16 @@
       <select id="playerRaceSelect"></select>
       <label for="enemyRaceSelect">Computer Race</label>
       <select id="enemyRaceSelect"></select>
+      <div class="race-preview-grid">
+        <figure class="race-preview-card">
+          <figcaption>Player Race Art</figcaption>
+          <canvas id="playerRacePreview" width="300" height="170" aria-label="Player race artwork preview"></canvas>
+        </figure>
+        <figure class="race-preview-card">
+          <figcaption>Computer Race Art</figcaption>
+          <canvas id="enemyRacePreview" width="300" height="170" aria-label="Computer race artwork preview"></canvas>
+        </figure>
+      </div>
       <button id="startGameBtn">Start Game</button>
     </section>
     <section id="hudPanel" class="hud hidden-until-start">
