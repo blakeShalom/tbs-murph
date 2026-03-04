@@ -67,6 +67,20 @@ test("armor absorbs up to 80% of raw damage before hp damage", () => {
   assert.equal(defender.hp, 26);
 });
 
+test("with enough armor, 20% of raw damage still goes to hp", () => {
+  const attacker = makeUnit({ attack: 20, damage: 10 });
+  const defender = makeUnit({ hp: 25, armor: 30, evasiveness: 1 });
+  const result = resolveStrike(attacker, defender, {
+    percentRollFn: () => 0.0,
+    damageRollFn: () => 0.9999
+  });
+
+  assert.equal(result.rawDamage, 10);
+  assert.equal(result.armorAbsorbed, 8);
+  assert.equal(result.hpDamage, 2);
+  assert.equal(defender.hp, 23);
+});
+
 test("low armor only absorbs what remains and spillover hits hp", () => {
   const attacker = makeUnit({ attack: 20, damage: 20 });
   const defender = makeUnit({ hp: 18, armor: 3, evasiveness: 1 });
@@ -109,4 +123,14 @@ test("damage roll spans 1..max damage inclusive", () => {
   const attacker = makeUnit({ damage: 12 });
   assert.equal(rollDamage(attacker, () => 0.0), 1);
   assert.equal(rollDamage(attacker, () => 0.9999), 12);
+});
+
+test("damage roll is biased toward higher values", () => {
+  const attacker = makeUnit({ damage: 12 });
+  const samples = [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9];
+  const average =
+    samples.map((sample) => rollDamage(attacker, () => sample)).reduce((sum, value) => sum + value, 0) /
+    samples.length;
+
+  assert.ok(average > 6.5);
 });

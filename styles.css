@@ -143,6 +143,28 @@ canvas {
   margin-bottom: 0.2rem;
 }
 
+.combat-log-panel {
+  margin-top: 0.7rem;
+  border: 1px solid #c8d0b7;
+  border-radius: 8px;
+  background: #f5f8ed;
+  padding: 0.45rem 0.55rem;
+}
+
+.combat-log-panel h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.88rem;
+}
+
+.combat-log-list {
+  margin: 0;
+  padding-left: 1rem;
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 0.8rem;
+  line-height: 1.3;
+}
+
 @media (min-width: 900px) {
   .app {
     grid-template-columns: 330px 1fr;

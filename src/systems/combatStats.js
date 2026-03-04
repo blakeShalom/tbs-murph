@@ -1,6 +1,7 @@
 export const BASE_HIT_CHANCE = 70;
 export const MIN_HIT_CHANCE = 10;
 export const MAX_HIT_CHANCE = 95;
+export const DAMAGE_EXP_LAMBDA = 2.25;
 
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -14,9 +15,9 @@ export function getHitChance(attacker, defender) {
 export function rollDamage(attacker, percentRollFn) {
   const fn = typeof percentRollFn === "function" ? percentRollFn : () => Math.random();
   const raw = fn();
-  const normalized = Number.isFinite(raw) ? raw : 0;
-  const clamped = clamp(normalized, 0, 0.999999);
-  return Math.floor(clamped * Math.max(1, attacker.damage)) + 1;
+  const normalized = clamp(Number.isFinite(raw) ? raw : 0, 0, 0.999999);
+  const biased = (1 - Math.exp(-DAMAGE_EXP_LAMBDA * normalized)) / (1 - Math.exp(-DAMAGE_EXP_LAMBDA));
+  return Math.floor(biased * Math.max(1, attacker.damage)) + 1;
 }
 
 export function resolveStrike(attacker, defender, { percentRollFn, damageRollFn } = {}) {
@@ -39,10 +40,12 @@ export function resolveStrike(attacker, defender, { percentRollFn, damageRollFn 
   }
 
   const rawDamage = rollDamage(attacker, damageRollFn);
-  const armorAbsorbCap = Math.ceil(rawDamage * 0.8);
-  const armorAbsorbed = Math.min(defender.armor, armorAbsorbCap);
+  const intendedArmorDamage = Math.floor(rawDamage * 0.8);
+  const guaranteedHpDamage = rawDamage - intendedArmorDamage;
+  const armorAbsorbed = Math.min(defender.armor, intendedArmorDamage);
   defender.armor -= armorAbsorbed;
-  const hpDamage = Math.max(0, rawDamage - armorAbsorbed);
+  const spillToHp = intendedArmorDamage - armorAbsorbed;
+  const hpDamage = Math.max(0, guaranteedHpDamage + spillToHp);
   defender.hp = Math.max(0, defender.hp - hpDamage);
 
   const eliminated = defender.hp <= 0;

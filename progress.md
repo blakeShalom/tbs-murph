@@ -90,3 +90,19 @@ TODO / follow-ups:
 - Verification:
   - `npm test` now passes with 42 total tests.
   - Ran skill Playwright smoke loop after test additions: `output/web-game/tests-smoke/` with no `errors-0.json`.
+- Adjusted combat damage model per feedback:
+  - Damage roll is now high-biased (exponential curve) up to max damage.
+  - Damage routing uses 80/20 split: 80% targets armor, 20% always targets HP; if armor cannot absorb its share, overflow spills into HP.
+- Added visible movement stat in tooltips (`MOV`).
+  - Map tooltip shows `MOV <max>`.
+  - Combat tooltip shows `MOV <current>/<max>`.
+- Added combat action log panel in HUD (`#combatLog`) and consolidated attack detail output there for both player and enemy turns.
+- Added combat log to text-state output as `combatLog`.
+
+Validation:
+- Unit tests: `npm test` passing (44 tests).
+- Skill Playwright client run: `output/web-game/combat-log-smoke/` with no `errors-0.json`.
+- Focused full-page Playwright check for combat log + both-turn entries:
+  - `output/web-game/combat-log-dom/full.png`
+  - `output/web-game/combat-log-dom/state.json`
+  - `output/web-game/combat-log-dom/log.txt`

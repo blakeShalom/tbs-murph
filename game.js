@@ -6,6 +6,8 @@ const FOG_RADIUS = 2;
 const BASE_HIT_CHANCE = 70;
 const MIN_HIT_CHANCE = 10;
 const MAX_HIT_CHANCE = 95;
+const DAMAGE_EXP_LAMBDA = 2.25;
+const MAX_COMBAT_LOG_ENTRIES = 40;
 
 const MAP_TERRAIN_RULES = {
   plains: { label: "Plains", cost: 1, passable: true, color: "#d8e2c5" },
@@ -57,6 +59,8 @@ const startGameBtnEl = document.getElementById("startGameBtn");
 const hudPanelEl = document.getElementById("hudPanel");
 const boardWrapEl = document.getElementById("boardWrap");
 const unitTooltipEl = document.getElementById("unitTooltip");
+const combatLogEl = document.getElementById("combatLog");
+const combatLogPanelEl = document.querySelector(".combat-log-panel");
 const statusEl = document.getElementById("status");
 const modeLabelEl = document.getElementById("modeLabel");
 const mapMpLabelEl = document.getElementById("mapMpLabel");
@@ -341,8 +345,16 @@ function getHitChance(attacker, defender) {
   return clamp(modified, MIN_HIT_CHANCE, MAX_HIT_CHANCE);
 }
 
-function formatUnitStatLine(unit) {
-  return `${unitName(unit)} HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness}`;
+function rollBiasedDamage(maxDamage) {
+  const normalized = (1 - Math.exp(-DAMAGE_EXP_LAMBDA * Math.random())) / (1 - Math.exp(-DAMAGE_EXP_LAMBDA));
+  return Math.floor(normalized * Math.max(1, maxDamage)) + 1;
+}
+
+function formatUnitStatLine(unit, includeCurrentMove = false) {
+  const moveText = includeCurrentMove
+    ? `${unit.currentCombatMp}/${unit.maxCombatMp}`
+    : `${unit.maxCombatMp}`;
+  return `${unitName(unit)} HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness} MOV ${moveText}`;
 }
 
 function setTooltipHtml(html, x, y) {
@@ -373,6 +385,37 @@ function setTooltipHtml(html, x, y) {
 
   unitTooltipEl.style.left = `${clampedLeft}px`;
   unitTooltipEl.style.top = `${clampedTop}px`;
+}
+
+function clearCombatLog() {
+  if (combatLogEl) {
+    combatLogEl.innerHTML = "";
+  }
+  if (state?.combat?.log) {
+    state.combat.log = [];
+  }
+}
+
+function appendCombatLog(entry) {
+  if (state?.combat) {
+    if (!Array.isArray(state.combat.log)) {
+      state.combat.log = [];
+    }
+    state.combat.log.push(entry);
+    if (state.combat.log.length > MAX_COMBAT_LOG_ENTRIES) {
+      state.combat.log.splice(0, state.combat.log.length - MAX_COMBAT_LOG_ENTRIES);
+    }
+  }
+
+  if (!combatLogEl) return;
+  const item = document.createElement("li");
+  item.textContent = entry;
+  combatLogEl.appendChild(item);
+
+  while (combatLogEl.children.length > MAX_COMBAT_LOG_ENTRIES) {
+    combatLogEl.removeChild(combatLogEl.firstElementChild);
+  }
+  combatLogEl.scrollTop = combatLogEl.scrollHeight;
 }
 
 function refreshHoveredTooltip() {
@@ -579,11 +622,13 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender) {
     };
   }
 
-  const rawDamage = randomInt(1, Math.max(1, attacker.damage));
-  const armorAbsorbCap = Math.ceil(rawDamage * 0.8);
-  const armorAbsorbed = Math.min(defender.armor, armorAbsorbCap);
+  const rawDamage = rollBiasedDamage(attacker.damage);
+  const intendedArmorDamage = Math.floor(rawDamage * 0.8);
+  const guaranteedHpDamage = rawDamage - intendedArmorDamage;
+  const armorAbsorbed = Math.min(defender.armor, intendedArmorDamage);
   defender.armor -= armorAbsorbed;
-  const hpDamage = Math.max(0, rawDamage - armorAbsorbed);
+  const spillToHp = intendedArmorDamage - armorAbsorbed;
+  const hpDamage = Math.max(0, guaranteedHpDamage + spillToHp);
   defender.hp = Math.max(0, defender.hp - hpDamage);
 
   let eliminated = null;
@@ -650,6 +695,9 @@ function placeCombatUnits() {
 function updateControls() {
   modeLabelEl.textContent = state.mode === "map" ? "Map" : "Combat";
   mapMpLabelEl.textContent = `${state.stacks.player.currentMapMp}/${state.stacks.player.maxMapMp}`;
+  if (combatLogPanelEl) {
+    combatLogPanelEl.style.display = state.mode === "combat" ? "block" : "none";
+  }
 
   const active = getActivePlayerUnit();
   if (combatMpLabelEl) {
@@ -678,8 +726,10 @@ function startCombat(initiator) {
   state.combatTerrain = createCombatTerrain(COMBAT_GRID_SIZE);
   state.combat = {
     activePlayerUnitId: null,
-    targeting: false
+    targeting: false,
+    log: []
   };
+  clearCombatLog();
 
   placeCombatUnits();
   resetCombatMp("player");
@@ -689,6 +739,7 @@ function startCombat(initiator) {
   state.combat.activePlayerUnitId = first ? first.id : null;
 
   statusEl.textContent = `Combat View: ${state.stacks.player.race} (${getStackCount("player")}) engages ${state.stacks.enemy.race} (${getStackCount("enemy")}). ${initiator === "player" ? "Your" : "Enemy"} combat turn.`;
+  appendCombatLog(`${state.stacks.player.race} engages ${state.stacks.enemy.race}. ${initiator === "player" ? "Player" : "Enemy"} acts first.`);
   updateControls();
   draw();
 
@@ -868,11 +919,14 @@ function performPlayerAttack(attacker, defender) {
   attacker.currentCombatMp = 0;
   clearTargetingMode();
 
+  const logPrefix = `${unitName(attacker)} -> ${unitName(defender)}`;
   if (!result.hit) {
-    statusEl.textContent = `Combat View: ${unitName(attacker)} attacked ${unitName(defender)} and missed (roll ${result.hitRoll} vs ${result.hitChance}%).`;
+    appendCombatLog(`${logPrefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
+    statusEl.textContent = "Combat View: Attack logged.";
   } else {
     const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
-    statusEl.textContent = `Combat View: ${unitName(attacker)} hit ${unitName(defender)} for ${result.rawDamage} raw damage (${result.armorAbsorbed} absorbed, ${result.hpDamage} HP dealt).${eliminatedText}`;
+    appendCombatLog(`${logPrefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
+    statusEl.textContent = `Combat View: Attack logged.${eliminatedText}`;
   }
 
   if (!checkCombatEnd()) {
@@ -977,11 +1031,13 @@ function enemyCombatTurn() {
         const defender = targets[0];
         const result = resolveAttack("enemy", unit, "player", defender);
         unit.currentCombatMp = 0;
+        const logPrefix = `${unitName(unit)} -> ${unitName(defender)}`;
         if (!result.hit) {
-          statusEl.textContent = `Combat View: ${unitName(unit)} attacked ${unitName(defender)} and missed (roll ${result.hitRoll} vs ${result.hitChance}%).`;
+          appendCombatLog(`${logPrefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
+          statusEl.textContent = "Combat View: Enemy attack logged.";
         } else {
-          const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
-          statusEl.textContent = `Combat View: ${unitName(unit)} hit ${unitName(defender)} for ${result.rawDamage} raw damage (${result.armorAbsorbed} absorbed, ${result.hpDamage} HP dealt).${eliminatedText}`;
+          appendCombatLog(`${logPrefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
+          statusEl.textContent = "Combat View: Enemy attack logged.";
         }
 
         if (checkCombatEnd()) {
@@ -1259,7 +1315,7 @@ function buildMapStackTooltipHtml(side) {
   const stack = state.stacks[side];
   const units = getAliveUnits(side);
   const lines = units
-    .map((unit) => `<div>${formatUnitStatLine(unit)}</div>`)
+    .map((unit) => `<div>${formatUnitStatLine(unit, false)}</div>`)
     .join("");
   return `<strong>${stack.race} Stack (${units.length} units)</strong>${lines}`;
 }
@@ -1270,7 +1326,7 @@ function buildCombatUnitTooltipHtml(side, unit) {
     state.mode === "combat" && active && side === "enemy"
       ? `<div>Chance for ${unitName(active)} to hit: ${getHitChance(active, unit)}%</div>`
       : "";
-  return `<strong>${state.stacks[side].race} ${unitName(unit)}</strong><div>${formatUnitStatLine(unit)}</div>${hitChanceText}`;
+  return `<strong>${state.stacks[side].race} ${unitName(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${hitChanceText}`;
 }
 
 function updateHoveredEntity(event) {
@@ -1367,6 +1423,8 @@ function renderGameToText() {
           maxHp: unit.maxHp,
           armor: unit.armor,
           maxArmor: unit.maxArmor,
+          moveCurrent: unit.currentCombatMp,
+          moveMax: unit.maxCombatMp,
           attack: unit.attack,
           damage: unit.damage,
           evasiveness: unit.evasiveness,
@@ -1388,6 +1446,8 @@ function renderGameToText() {
           maxHp: unit.maxHp,
           armor: unit.armor,
           maxArmor: unit.maxArmor,
+          moveCurrent: unit.currentCombatMp,
+          moveMax: unit.maxCombatMp,
           attack: unit.attack,
           damage: unit.damage,
           evasiveness: unit.evasiveness,
@@ -1400,6 +1460,7 @@ function renderGameToText() {
     activePlayerUnitId: active ? active.id : null,
     activePlayerUnitLabel: active ? unitName(active) : null,
     targetingMode: Boolean(state.combat?.targeting),
+    combatLog: state.combat?.log || [],
     combatRules: {
       baseHitChance: BASE_HIT_CHANCE,
       minHitChance: MIN_HIT_CHANCE,
@@ -1421,6 +1482,8 @@ function renderGameToText() {
             maxHp: unit.maxHp,
             armor: unit.armor,
             maxArmor: unit.maxArmor,
+            moveCurrent: unit.currentCombatMp,
+            moveMax: unit.maxCombatMp,
             attack: unit.attack,
             damage: unit.damage,
             evasiveness: unit.evasiveness
@@ -1485,6 +1548,7 @@ function resetGame() {
   pendingActions.length = 0;
   hoveredEntity = null;
   setTooltipHtml("");
+  clearCombatLog();
   state = initialState();
   updateRaceLabels();
   statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Stack sizes are random (1-8): ${state.stacks.player.token}${toSubscript(getStackCount("player"))} vs ${state.stacks.enemy.token}${toSubscript(getStackCount("enemy"))}.`;

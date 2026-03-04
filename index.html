@@ -29,7 +29,11 @@
       <button id="attackBtn">Attack</button>
       <button id="endTurnBtn">End Turn</button>
       <button id="resetBtn">Reset</button>
-      <p class="hint">Hover stacks/units for stats. Combat hit chance starts at 70% and is modified by ATK vs EVA (10%-95%). Armor absorbs up to 80% of incoming damage until depleted.</p>
+      <p class="hint">Hover stacks/units for stats including movement. Combat hit chance starts at 70% and is modified by ATK vs EVA (10%-95%). Damage is high-biased up to max. Armor routes 80% through armor and 20% to HP, with overflow to HP if armor is depleted.</p>
+      <section class="combat-log-panel">
+        <h3>Combat Log</h3>
+        <ul id="combatLog" class="combat-log-list"></ul>
+      </section>
     </section>
     <section id="boardWrap" class="board-wrap hidden-until-start">
       <canvas id="board" width="640" height="640" aria-label="Game board"></canvas>
