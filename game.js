@@ -61,56 +61,32 @@ const CENTAUR_UNIT_ARCHETYPES = [
     name: "Recon",
     loadout: "Short Bow + Light Sword",
     coatColor: "#8f6a49",
-    statRanges: {
-      hp: [14, 22],
-      attack: [8, 15],
-      damage: [4, 11],
-      armor: [1, 7],
-      evasiveness: [12, 20],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 18, attack: 11, damage: 7, armor: 3, evasiveness: 15, combatMp: 4 },
+    abilities: ["archery"]
   },
   {
     id: "brute",
     name: "Brute",
     loadout: "Plate Armor + Two-Handed Axe",
     coatColor: "#694f39",
-    statRanges: {
-      hp: [22, 30],
-      attack: [11, 19],
-      damage: [10, 20],
-      armor: [12, 20],
-      evasiveness: [2, 10],
-      combatMp: [1, 2]
-    }
+    stats: { hp: 28, attack: 15, damage: 16, armor: 17, evasiveness: 5, combatMp: 2 },
+    abilities: []
   },
   {
     id: "marksman",
     name: "Marksman",
     loadout: "Longbow + Short Sword + Leather Armor",
     coatColor: "#765b3f",
-    statRanges: {
-      hp: [16, 25],
-      attack: [10, 18],
-      damage: [8, 16],
-      armor: [4, 12],
-      evasiveness: [8, 16],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 21, attack: 14, damage: 11, armor: 7, evasiveness: 12, combatMp: 3 },
+    abilities: ["archery", "marksmanship"]
   },
   {
     id: "captain",
     name: "Captain",
     loadout: "Long Axe + Medium Armor",
     coatColor: "#d8d4cb",
-    statRanges: {
-      hp: [20, 30],
-      attack: [12, 20],
-      damage: [9, 18],
-      armor: [8, 15],
-      evasiveness: [6, 14],
-      combatMp: [1, 3]
-    }
+    stats: { hp: 25, attack: 16, damage: 13, armor: 11, evasiveness: 9, combatMp: 3 },
+    abilities: []
   }
 ];
 
@@ -120,84 +96,48 @@ const DEMON_UNIT_ARCHETYPES = [
     name: "Imp",
     loadout: "Hooves + Wings + Horns",
     coatColor: "#7c5742",
-    statRanges: {
-      hp: [12, 20],
-      attack: [6, 14],
-      damage: [3, 10],
-      armor: [1, 6],
-      evasiveness: [11, 19],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 16, attack: 10, damage: 6, armor: 2, evasiveness: 12, combatMp: 3 },
+    abilities: []
   },
   {
     id: "gog",
     name: "Gog",
     loadout: "Firebody + Fireball Throw",
     coatColor: "#b4472e",
-    statRanges: {
-      hp: [14, 22],
-      attack: [9, 17],
-      damage: [7, 16],
-      armor: [2, 8],
-      evasiveness: [8, 15],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 20, attack: 13, damage: 11, armor: 5, evasiveness: 11, combatMp: 3 },
+    abilities: []
   },
   {
     id: "hell-hound",
     name: "Hell Hound",
     loadout: "Cerberus-like Demon Dog",
     coatColor: "#59352a",
-    statRanges: {
-      hp: [18, 28],
-      attack: [10, 18],
-      damage: [8, 17],
-      armor: [4, 12],
-      evasiveness: [7, 13],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 24, attack: 15, damage: 13, armor: 6, evasiveness: 10, combatMp: 4 },
+    abilities: []
   },
   {
     id: "succubus",
     name: "Succubus",
     loadout: "Winged Demon",
     coatColor: "#8f4b59",
-    statRanges: {
-      hp: [15, 24],
-      attack: [10, 17],
-      damage: [6, 14],
-      armor: [3, 10],
-      evasiveness: [10, 18],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 19, attack: 14, damage: 10, armor: 4, evasiveness: 15, combatMp: 3 },
+    abilities: []
   },
   {
     id: "incubus",
     name: "Incubus",
     loadout: "Fire Djinni Demon",
     coatColor: "#9a5137",
-    statRanges: {
-      hp: [18, 27],
-      attack: [11, 19],
-      damage: [8, 17],
-      armor: [4, 11],
-      evasiveness: [8, 16],
-      combatMp: [2, 3]
-    }
+    stats: { hp: 23, attack: 16, damage: 14, armor: 8, evasiveness: 11, combatMp: 3 },
+    abilities: []
   },
   {
     id: "arch-fiend",
     name: "Arch Fiend",
     loadout: "Battle Axe + Claws + Black Plate",
     coatColor: "#aa2f23",
-    statRanges: {
-      hp: [22, 30],
-      attack: [13, 20],
-      damage: [11, 20],
-      armor: [10, 20],
-      evasiveness: [5, 12],
-      combatMp: [1, 2]
-    }
+    stats: { hp: 29, attack: 18, damage: 17, armor: 16, evasiveness: 7, combatMp: 2 },
+    abilities: []
   }
 ];
 
@@ -381,10 +321,6 @@ const initialState = () => {
 
 let state = initialState();
 
-function rollFromRange(range) {
-  return randomInt(range[0], range[1]);
-}
-
 function pickRandomCentaurArchetype() {
   return CENTAUR_UNIT_ARCHETYPES[randomInt(0, CENTAUR_UNIT_ARCHETYPES.length - 1)];
 }
@@ -395,8 +331,9 @@ function pickRandomDemonArchetype() {
 
 function createCentaurUnit(side, race, index) {
   const archetype = pickRandomCentaurArchetype();
-  const maxHp = rollFromRange(archetype.statRanges.hp);
-  const armor = rollFromRange(archetype.statRanges.armor);
+  const stats = archetype.stats;
+  const maxHp = stats.hp;
+  const armor = stats.armor;
 
   return {
     id: `${side[0].toUpperCase()}${index + 1}`,
@@ -408,14 +345,15 @@ function createCentaurUnit(side, race, index) {
     loadout: archetype.loadout,
     archetypeId: archetype.id,
     coatColor: archetype.coatColor,
+    abilities: [...(archetype.abilities || [])],
     hp: maxHp,
     maxHp,
-    attack: rollFromRange(archetype.statRanges.attack),
-    damage: rollFromRange(archetype.statRanges.damage),
+    attack: stats.attack,
+    damage: stats.damage,
     armor,
     maxArmor: armor,
-    evasiveness: rollFromRange(archetype.statRanges.evasiveness),
-    maxCombatMp: rollFromRange(archetype.statRanges.combatMp),
+    evasiveness: stats.evasiveness,
+    maxCombatMp: stats.combatMp,
     currentCombatMp: 0,
     x: null,
     y: null
@@ -424,8 +362,9 @@ function createCentaurUnit(side, race, index) {
 
 function createDemonUnit(side, race, index) {
   const archetype = pickRandomDemonArchetype();
-  const maxHp = rollFromRange(archetype.statRanges.hp);
-  const armor = rollFromRange(archetype.statRanges.armor);
+  const stats = archetype.stats;
+  const maxHp = stats.hp;
+  const armor = stats.armor;
 
   return {
     id: `${side[0].toUpperCase()}${index + 1}`,
@@ -437,14 +376,15 @@ function createDemonUnit(side, race, index) {
     loadout: archetype.loadout,
     archetypeId: archetype.id,
     coatColor: archetype.coatColor,
+    abilities: [...(archetype.abilities || [])],
     hp: maxHp,
     maxHp,
-    attack: rollFromRange(archetype.statRanges.attack),
-    damage: rollFromRange(archetype.statRanges.damage),
+    attack: stats.attack,
+    damage: stats.damage,
     armor,
     maxArmor: armor,
-    evasiveness: rollFromRange(archetype.statRanges.evasiveness),
-    maxCombatMp: rollFromRange(archetype.statRanges.combatMp),
+    evasiveness: stats.evasiveness,
+    maxCombatMp: stats.combatMp,
     currentCombatMp: 0,
     x: null,
     y: null
@@ -460,6 +400,7 @@ function createDefaultUnit(side, race, index) {
     side,
     unitRaceId: race.id,
     alive: true,
+    abilities: [],
     hp: maxHp,
     maxHp,
     attack: randomInt(1, 20),
@@ -1616,12 +1557,18 @@ function getCombatSpriteCanvas(side, unit) {
 }
 
 function drawCombatRing(cx, cy, stroke, width = 2, radius = COMBAT_TILE_SIZE * 0.28) {
+  drawCombatRingStyled(cx, cy, { stroke, width, radius, dash: [] });
+}
+
+function drawCombatRingStyled(cx, cy, { stroke, width = 2, radius = COMBAT_TILE_SIZE * 0.28, dash = [] }) {
+  ctx.save();
   ctx.strokeStyle = stroke;
   ctx.lineWidth = width;
+  ctx.setLineDash(dash);
   ctx.beginPath();
   ctx.arc(cx, cy, radius, 0, Math.PI * 2);
   ctx.stroke();
-  ctx.lineWidth = 1;
+  ctx.restore();
 }
 
 function getRaceArtCanvas(race, variant) {
@@ -1681,8 +1628,8 @@ function toSubscript(n) {
     .join("");
 }
 
-function getHitChance(attacker, defender) {
-  const modified = BASE_HIT_CHANCE + (attacker.attack - defender.evasiveness) * 2;
+function getHitChance(attacker, defender, attackValue = attacker.attack) {
+  const modified = BASE_HIT_CHANCE + (attackValue - defender.evasiveness) * 2;
   return clamp(modified, MIN_HIT_CHANCE, MAX_HIT_CHANCE);
 }
 
@@ -1696,6 +1643,33 @@ function formatUnitStatLine(unit, includeCurrentMove = false) {
     ? `${unit.currentCombatMp}/${unit.maxCombatMp}`
     : `${unit.maxCombatMp}`;
   return `HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness} MOV ${moveText}`;
+}
+
+function hasAbility(unit, abilityId) {
+  return Array.isArray(unit.abilities) && unit.abilities.includes(abilityId);
+}
+
+function getUnitAbilities(unit) {
+  const entries = [];
+
+  if (hasAbility(unit, "archery")) {
+    const profile = getArcheryProfile(unit);
+    entries.push(`Active: Archery (RNG ${profile.range}, ATK ${profile.attack}, DMG ${profile.damage})`);
+  }
+
+  if (hasAbility(unit, "marksmanship")) {
+    entries.push("Passive: Marksmanship (+1 Archery RNG, +2 Archery ATK, +2 Archery DMG)");
+  }
+
+  return entries;
+}
+
+function formatUnitAbilitiesHtml(unit) {
+  const entries = getUnitAbilities(unit);
+  if (entries.length === 0) {
+    return "";
+  }
+  return `<div>Abilities: ${entries.join(" | ")}</div>`;
 }
 
 function formatUnitIdentity(unit) {
@@ -1902,6 +1876,132 @@ function adjacentTargets(attacker, defenderSide) {
   return getAliveUnits(defenderSide).filter((unit) => manhattan(attacker, unit) === 1);
 }
 
+function getMeleeProfile(attacker) {
+  return {
+    id: "melee",
+    label: "melee",
+    attack: attacker.attack,
+    damage: attacker.damage,
+    range: 1,
+    targeting: "adjacent",
+    priority: 0
+  };
+}
+
+function getArcheryProfile(attacker) {
+  if (!hasAbility(attacker, "archery")) {
+    return null;
+  }
+
+  const marksmanshipBonus = hasAbility(attacker, "marksmanship") ? 2 : 0;
+  const rangeBonus = hasAbility(attacker, "marksmanship") ? 1 : 0;
+
+  return {
+    id: "archery",
+    label: "shot",
+    attack: Math.max(1, attacker.attack - 2 + marksmanshipBonus),
+    damage: Math.max(1, attacker.damage - 2 + marksmanshipBonus),
+    range: 2 + rangeBonus,
+    targeting: "orthogonal-line",
+    priority: 1
+  };
+}
+
+function isClearOrthogonalShot(attacker, defender) {
+  if (attacker.x !== defender.x && attacker.y !== defender.y) {
+    return false;
+  }
+
+  const dx = Math.sign(defender.x - attacker.x);
+  const dy = Math.sign(defender.y - attacker.y);
+  let x = attacker.x + dx;
+  let y = attacker.y + dy;
+
+  while (x !== defender.x || y !== defender.y) {
+    if (getCombatUnitAt(x, y)) {
+      return false;
+    }
+    x += dx;
+    y += dy;
+  }
+
+  return true;
+}
+
+function getRangedTargets(attacker, defenderSide) {
+  if (adjacentTargets(attacker, defenderSide).length > 0) {
+    return [];
+  }
+
+  const archery = getArcheryProfile(attacker);
+  if (!archery) {
+    return [];
+  }
+
+  return getAliveUnits(defenderSide).filter((unit) => {
+    const distance = manhattan(attacker, unit);
+    if (distance <= 1 || distance > archery.range) {
+      return false;
+    }
+    return isClearOrthogonalShot(attacker, unit);
+  });
+}
+
+function getAvailableAttackProfiles(attacker, defenderSide) {
+  const profiles = [getMeleeProfile(attacker)];
+
+  if (getArcheryProfile(attacker) && adjacentTargets(attacker, defenderSide).length === 0) {
+    profiles.push(getArcheryProfile(attacker));
+  }
+
+  return profiles.sort((a, b) => a.priority - b.priority);
+}
+
+function getTargetsForProfile(attacker, defenderSide, profile) {
+  if (profile.targeting === "adjacent") {
+    return adjacentTargets(attacker, defenderSide);
+  }
+
+  if (profile.targeting === "orthogonal-line") {
+    return getRangedTargets(attacker, defenderSide);
+  }
+
+  return [];
+}
+
+function getAttackCandidates(attacker, defenderSide) {
+  const candidates = [];
+
+  for (const profile of getAvailableAttackProfiles(attacker, defenderSide)) {
+    for (const unit of getTargetsForProfile(attacker, defenderSide, profile)) {
+      candidates.push({
+        unit,
+        profile,
+        distance: manhattan(attacker, unit)
+      });
+    }
+  }
+
+  candidates.sort((a, b) => a.profile.priority - b.profile.priority || a.distance - b.distance || a.unit.id.localeCompare(b.unit.id));
+  return candidates;
+}
+
+function getAttackIndicatorStyle(profile) {
+  if (profile.id === "archery") {
+    return {
+      color: "#6fd3ff",
+      radiusScale: 0.34,
+      dash: [5, 3]
+    };
+  }
+
+  return {
+    color: "#ffd34d",
+    radiusScale: 0.32,
+    dash: []
+  };
+}
+
 function getDirectionDelta(key) {
   if (key === "ArrowUp") return { dx: 0, dy: -1 };
   if (key === "ArrowDown") return { dx: 0, dy: 1 };
@@ -1955,8 +2055,8 @@ function eliminateUnit(unit) {
   unit.y = null;
 }
 
-function resolveAttack(attackerSide, attacker, defenderSide, defender) {
-  const hitChance = getHitChance(attacker, defender);
+function resolveAttack(attackerSide, attacker, defenderSide, defender, profile = getMeleeProfile(attacker)) {
+  const hitChance = getHitChance(attacker, defender, profile.attack);
   const hitRoll = randomInt(1, 100);
   const hit = hitRoll <= hitChance;
 
@@ -1964,6 +2064,8 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender) {
     return {
       attackerSide,
       defenderSide,
+      attackType: profile.id,
+      attackLabel: profile.label,
       hitChance,
       hitRoll,
       hit: false,
@@ -1974,7 +2076,7 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender) {
     };
   }
 
-  const rawDamage = rollBiasedDamage(attacker.damage);
+  const rawDamage = rollBiasedDamage(profile.damage);
   const intendedArmorDamage = Math.floor(rawDamage * 0.8);
   const guaranteedHpDamage = rawDamage - intendedArmorDamage;
   const armorAbsorbed = Math.min(defender.armor, intendedArmorDamage);
@@ -1992,6 +2094,8 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender) {
   return {
     attackerSide,
     defenderSide,
+    attackType: profile.id,
+    attackLabel: profile.label,
     hitChance,
     hitRoll,
     hit: true,
@@ -2064,7 +2168,7 @@ function updateControls() {
     !state.gameOver &&
     active &&
     active.currentCombatMp > 0 &&
-    adjacentTargets(active, "enemy").length > 0;
+    getAttackCandidates(active, "enemy").length > 0;
 
   attackBtn.disabled = !canAttack;
   endTurnBtn.disabled = state.gameOver;
@@ -2266,12 +2370,12 @@ function moveCombatActiveUnit(key) {
   draw();
 }
 
-function performPlayerAttack(attacker, defender) {
-  const result = resolveAttack("player", attacker, "enemy", defender);
+function performPlayerAttack(attacker, defender, profile) {
+  const result = resolveAttack("player", attacker, "enemy", defender, profile);
   attacker.currentCombatMp = 0;
   clearTargetingMode();
 
-  const logPrefix = `${unitName(attacker)} -> ${unitName(defender)}`;
+  const logPrefix = `${unitName(attacker)} ${result.attackLabel} -> ${unitName(defender)}`;
   if (!result.hit) {
     appendCombatLog(`${logPrefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
     statusEl.textContent = "Combat View: Attack logged.";
@@ -2308,9 +2412,12 @@ function handleDirectionalAttack(key) {
   const delta = getDirectionDelta(key);
   if (!delta) return false;
 
-  const tx = attacker.x + delta.dx;
-  const ty = attacker.y + delta.dy;
-  const target = getAliveUnits("enemy").find((unit) => unit.x === tx && unit.y === ty);
+  const candidates = getAttackCandidates(attacker, "enemy").filter((candidate) => {
+    const dxToTarget = Math.sign(candidate.unit.x - attacker.x);
+    const dyToTarget = Math.sign(candidate.unit.y - attacker.y);
+    return dxToTarget === delta.dx && dyToTarget === delta.dy;
+  });
+  const target = candidates[0];
 
   if (!target) {
     statusEl.textContent = `Combat View: No enemy in that direction from ${unitName(attacker)}. Choose another direction or press Space to cancel targeting.`;
@@ -2319,7 +2426,7 @@ function handleDirectionalAttack(key) {
     return true;
   }
 
-  performPlayerAttack(attacker, target);
+  performPlayerAttack(attacker, target.unit, target.profile);
   return true;
 }
 
@@ -2347,20 +2454,20 @@ function playerCombatAttack() {
     return;
   }
 
-  const targets = adjacentTargets(active, "enemy");
+  const targets = getAttackCandidates(active, "enemy");
   if (targets.length === 0) {
-    statusEl.textContent = "Combat View: Move adjacent to an enemy unit to attack.";
+    statusEl.textContent = "Combat View: No valid melee or archery target in range.";
     updateControls();
     return;
   }
 
   if (targets.length === 1) {
-    performPlayerAttack(active, targets[0]);
+    performPlayerAttack(active, targets[0].unit, targets[0].profile);
     return;
   }
 
   state.combat.targeting = true;
-  statusEl.textContent = `Combat View: ${unitName(active)} has multiple adjacent enemies. Press arrow key toward target to attack.`;
+  statusEl.textContent = `Combat View: ${unitName(active)} has multiple attack targets. Press arrow key toward target to attack.`;
   updateControls();
   draw();
 }
@@ -2378,12 +2485,12 @@ function enemyCombatTurn() {
     if (!unit.alive || state.gameOver) continue;
 
     while (unit.currentCombatMp > 0) {
-      const targets = adjacentTargets(unit, "player");
+      const targets = getAttackCandidates(unit, "player");
       if (targets.length > 0) {
-        const defender = targets[0];
-        const result = resolveAttack("enemy", unit, "player", defender);
+        const { unit: defender, profile } = targets[0];
+        const result = resolveAttack("enemy", unit, "player", defender, profile);
         unit.currentCombatMp = 0;
-        const logPrefix = `${unitName(unit)} -> ${unitName(defender)}`;
+        const logPrefix = `${unitName(unit)} ${result.attackLabel} -> ${unitName(defender)}`;
         if (!result.hit) {
           appendCombatLog(`${logPrefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
           statusEl.textContent = "Combat View: Enemy attack logged.";
@@ -2571,11 +2678,14 @@ function drawStackToken(side, stack) {
 
 function drawCombatUnits() {
   const active = getActivePlayerUnit();
-  const targetableIds = new Set(
-    state.combat?.targeting && active
-      ? adjacentTargets(active, "enemy").map((unit) => unit.id)
-      : []
-  );
+  const targetableIndicators = new Map();
+  if (state.combat?.targeting && active) {
+    for (const candidate of getAttackCandidates(active, "enemy")) {
+      if (!targetableIndicators.has(candidate.unit.id)) {
+        targetableIndicators.set(candidate.unit.id, getAttackIndicatorStyle(candidate.profile));
+      }
+    }
+  }
 
   const drawSide = (side, color) => {
     for (const unit of getAliveUnits(side)) {
@@ -2620,8 +2730,14 @@ function drawCombatUnits() {
         drawCombatRing(cx, cy, "#6fd3ff", 3, COMBAT_TILE_SIZE * (hasSprite ? 0.31 : 0.25));
       }
 
-      if (side === "enemy" && targetableIds.has(unit.id)) {
-        drawCombatRing(cx, cy, "#ffd34d", 3, COMBAT_TILE_SIZE * (hasSprite ? 0.32 : 0.25));
+      if (side === "enemy" && targetableIndicators.has(unit.id)) {
+        const indicator = targetableIndicators.get(unit.id);
+        drawCombatRingStyled(cx, cy, {
+          stroke: indicator.color,
+          width: 3,
+          radius: COMBAT_TILE_SIZE * (hasSprite ? indicator.radiusScale : 0.25),
+          dash: indicator.dash
+        });
       }
     }
   };
@@ -2706,18 +2822,29 @@ function buildMapStackTooltipHtml(side) {
   const stack = state.stacks[side];
   const units = getAliveUnits(side);
   const lines = units
-    .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}`)
+    .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}`)
     .join("");
   return `<strong>${stack.race} Stack (${units.length} units)</strong>${lines}`;
 }
 
 function buildCombatUnitTooltipHtml(side, unit) {
   const active = side === "enemy" ? getActivePlayerUnit() : null;
-  const hitChanceText =
-    state.mode === "combat" && active && side === "enemy"
-      ? `<div>Chance for ${unitName(active)} to hit: ${getHitChance(active, unit)}%</div>`
-      : "";
-  return `<strong>${state.stacks[side].race} ${formatUnitIdentity(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${formatUnitLoadout(unit)}${hitChanceText}`;
+  let hitChanceText = "";
+  if (state.mode === "combat" && active && side === "enemy") {
+    const profiles = getAttackCandidates(active, "enemy")
+      .filter((candidate) => candidate.unit.id === unit.id)
+      .map((candidate) => candidate.profile);
+    const seen = new Set();
+    const lines = [];
+    for (const profile of profiles) {
+      if (seen.has(profile.id)) continue;
+      seen.add(profile.id);
+      const attackName = profile.id === "melee" ? "melee" : profile.label;
+      lines.push(`<div>Chance for ${unitName(active)} to hit with ${attackName}: ${getHitChance(active, unit, profile.attack)}%</div>`);
+    }
+    hitChanceText = lines.join("");
+  }
+  return `<strong>${state.stacks[side].race} ${formatUnitIdentity(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${hitChanceText}`;
 }
 
 function updateHoveredEntity(event) {
@@ -2784,7 +2911,13 @@ function renderGameToText() {
 
   const active = getActivePlayerUnit();
   const targetableEnemies = state.mode === "combat" && active
-    ? adjacentTargets(active, "enemy").map((unit) => ({ id: unit.id, x: unit.x, y: unit.y }))
+    ? getAttackCandidates(active, "enemy").map((candidate) => ({
+        id: candidate.unit.id,
+        x: candidate.unit.x,
+        y: candidate.unit.y,
+        attackType: candidate.profile.id,
+        range: candidate.profile.range
+      }))
     : [];
   const enemyVisible = isTileVisibleToPlayer(state.stacks.enemy.x, state.stacks.enemy.y);
   const exploredTiles = state.fog.player.explored.flat().filter(Boolean).length;
@@ -2814,6 +2947,7 @@ function renderGameToText() {
           archetypeId: unit.archetypeId || null,
           unitClass: unit.unitClass || null,
           loadout: unit.loadout || null,
+          abilities: [...(unit.abilities || [])],
           hp: unit.hp,
           maxHp: unit.maxHp,
           armor: unit.armor,
@@ -2841,6 +2975,7 @@ function renderGameToText() {
           archetypeId: unit.archetypeId || null,
           unitClass: unit.unitClass || null,
           loadout: unit.loadout || null,
+          abilities: [...(unit.abilities || [])],
           hp: unit.hp,
           maxHp: unit.maxHp,
           armor: unit.armor,
@@ -2876,6 +3011,7 @@ function renderGameToText() {
             archetypeId: unit.archetypeId || null,
             unitClass: unit.unitClass || null,
             loadout: unit.loadout || null,
+            abilities: [...(unit.abilities || [])],
             side,
             x: unit.x,
             y: unit.y,

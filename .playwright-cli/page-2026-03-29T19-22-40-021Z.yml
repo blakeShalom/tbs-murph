@@ -1,0 +1,29 @@
+- main [ref=e2]:
+  - generic [ref=e19]:
+    - 'heading "4X Prototype: Turn-Based Skirmish" [level=1] [ref=e20]'
+    - generic [ref=e21]:
+      - paragraph [ref=e22]:
+        - strong [ref=e23]: "Race A:"
+        - text: Centaur Clans
+      - paragraph [ref=e24]:
+        - strong [ref=e25]: "Race B:"
+        - text: Demon Horde
+    - paragraph [ref=e26]:
+      - strong [ref=e27]: "View:"
+      - text: Combat
+    - paragraph [ref=e28]:
+      - strong [ref=e29]: "Map MP:"
+      - text: 3/3
+    - paragraph [ref=e30]:
+      - strong [ref=e31]: "Combat MP:"
+      - text: P-C1 MP 3/3 HP 21/21
+    - paragraph [ref=e32]: "Combat View: Centaur Clans (1) engages Demon Horde (1). Your combat turn."
+    - button "Attack" [disabled] [ref=e33]
+    - button "End Turn" [ref=e34] [cursor=pointer]
+    - button "Reset" [ref=e35] [cursor=pointer]
+    - paragraph [ref=e36]: Hover stacks and units for stats, movement, and abilities. Combat hit chance starts at 70% and is modified by ATK vs EVA (10%-95%). Damage is high-biased up to max. Armor routes 80% through armor and 20% to HP, with overflow to HP if armor is depleted. Some Centaurs can attack at range.
+    - generic [ref=e37]:
+      - heading "Combat Log" [level=3] [ref=e38]
+      - list [ref=e39]:
+        - listitem [ref=e40]: Centaur Clans engages Demon Horde. Player acts first.
+  - generic "Game board" [ref=e18]

@@ -1,0 +1,34 @@
+- main [ref=e2]:
+  - generic [ref=e3]:
+    - heading "Choose Races" [level=2] [ref=e4]
+    - generic [ref=e5]: Player Race
+    - combobox "Player Race" [ref=e6]:
+      - option "Random" [selected]
+      - option "Centaur Clans"
+      - option "Demon Horde"
+      - option "Dawnforged"
+      - option "Ironclad"
+      - option "Sylvan"
+      - option "Emberkin"
+      - option "Tideborn"
+      - option "Stoneguard"
+    - generic [ref=e7]: Computer Race
+    - combobox "Computer Race" [ref=e8]:
+      - option "Random" [selected]
+      - option "Centaur Clans"
+      - option "Demon Horde"
+      - option "Dawnforged"
+      - option "Ironclad"
+      - option "Sylvan"
+      - option "Emberkin"
+      - option "Tideborn"
+      - option "Stoneguard"
+    - generic [ref=e9]:
+      - figure "Player Race Art" [ref=e10]:
+        - generic [ref=e11]: Player Race Art
+        - generic "Player race artwork preview" [ref=e12]
+      - figure "Computer Race Art" [ref=e13]:
+        - generic [ref=e14]: Computer Race Art
+        - generic "Computer race artwork preview" [ref=e15]
+    - button "Start Game" [ref=e16] [cursor=pointer]
+  - generic "Game board" [ref=e18]
