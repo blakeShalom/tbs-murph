@@ -10,8 +10,28 @@ export function adjacentTargets(attacker, defenders) {
   return defenders.filter((unit) => manhattan(attacker, unit) === 1);
 }
 
+export function getChargeThreshold(unit) {
+  return Math.max(1, Math.floor(unit.maxCombatMp / 2));
+}
+
+export function isChargeActive(unit) {
+  return hasAbility(unit, "charge") && (unit.combatMoveSpentThisTurn || 0) >= getChargeThreshold(unit);
+}
+
+export function applyAttackModifiers(attacker, profile) {
+  const nextProfile = { ...profile };
+
+  if (isChargeActive(attacker)) {
+    nextProfile.attack += 2;
+    nextProfile.damage += 2;
+    nextProfile.modifiers = [...(nextProfile.modifiers || []), "charge"];
+  }
+
+  return nextProfile;
+}
+
 export function getMeleeProfile(attacker) {
-  return {
+  return applyAttackModifiers(attacker, {
     id: "melee",
     label: "melee",
     attack: attacker.attack,
@@ -19,7 +39,7 @@ export function getMeleeProfile(attacker) {
     range: 1,
     targeting: "adjacent",
     priority: 0
-  };
+  });
 }
 
 export function getArcheryProfile(attacker) {
@@ -30,7 +50,7 @@ export function getArcheryProfile(attacker) {
   const marksmanshipBonus = hasAbility(attacker, "marksmanship") ? 2 : 0;
   const rangeBonus = hasAbility(attacker, "marksmanship") ? 1 : 0;
 
-  return {
+  return applyAttackModifiers(attacker, {
     id: "archery",
     label: "shot",
     attack: Math.max(1, attacker.attack - 2 + marksmanshipBonus),
@@ -38,7 +58,7 @@ export function getArcheryProfile(attacker) {
     range: 2 + rangeBonus,
     targeting: "orthogonal-line",
     priority: 1
-  };
+  });
 }
 
 export function isClearOrthogonalShot(attacker, defender, occupiedPositions = []) {

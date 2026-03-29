@@ -252,3 +252,26 @@ Validation for this tuning pass:
   - `output/web-game/demon-horde-art/demon-horde-setup-screen.png`
   - `output/web-game/demon-horde-art/demon-horde-map-screen.png`
   - `output/web-game/demon-horde-art/demon-horde-combat-screen.png`
+
+- Added `Charge` ability for Centaur `Brute` and `Captain`.
+  - `Charge` is visible in tooltips as a passive ability.
+  - It becomes primed after the unit spends at least half of its movement for the turn (`floor(MOV / 2)`, minimum 1).
+  - Primed `Charge` adds `+2 ATK` and `+2 DMG` through the attack-profile builder so future attack types can inherit it cleanly.
+  - Combat state now tracks `combatMoveSpentThisTurn`, resets it on turn refresh, and exposes `moveSpentThisTurn` in `render_game_to_text`.
+- Added pure helper coverage in `src/systems/attackProfiles.js` and expanded `tests/attack_profiles.test.js` for `Charge` thresholds and bonuses.
+
+TODO / follow-ups:
+- Add a deterministic browser smoke path that can reliably force a `Brute` or `Captain` spawn so `Charge` can be exercised end-to-end in Playwright, not just through exported state and unit tests.
+
+Validation for `Charge` pass:
+- Unit tests: `npm test` passing (51/51).
+- Required skill Playwright client run:
+  - `output/web-game/charge-smoke/shot-0.png`
+  - `output/web-game/charge-smoke/state-0.json`
+  - Visual inspection complete: combat board rendered correctly after the `Start Game` + debug-combat burst; no missing units or broken HUD visible in the captured screenshot.
+  - Text-state inspection confirmed `moveSpentThisTurn` is present in `render_game_to_text`.
+  - No `errors-*.json` artifact was produced in this run.
+
+TODO / suggestions:
+- The smoke run landed on `Emberkin` rather than `Centaur Clans`, so browser validation covered the new movement-state export but did not naturally roll a `Brute`/`Captain` tooltip in the skill-client scenario.
+- If `Charge` becomes a heavily-used mechanic, add a deterministic roster/debug seed so Playwright can force a charge-capable centaur and assert its primed state after movement.

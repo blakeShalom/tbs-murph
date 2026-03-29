@@ -2,10 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  getChargeThreshold,
   getArcheryProfile,
   getAttackCandidates,
   getAvailableAttackProfiles,
+  getMeleeProfile,
   getRangedTargets,
+  isChargeActive,
   isClearOrthogonalShot
 } from "../src/systems/attackProfiles.js";
 
@@ -16,6 +19,8 @@ function makeUnit(overrides = {}) {
     y: 1,
     attack: 10,
     damage: 8,
+    maxCombatMp: 3,
+    combatMoveSpentThisTurn: 0,
     abilities: [],
     ...overrides
   };
@@ -81,4 +86,30 @@ test("occupied tiles block orthogonal ranged shots", () => {
 
   assert.equal(isClearOrthogonalShot(attacker, enemy, [{ x: 1, y: 2 }]), false);
   assert.equal(getAttackCandidates(attacker, [enemy], [{ x: 1, y: 2 }]).length, 0);
+});
+
+test("charge activates after moving at least half of movement rounded down", () => {
+  const brute = makeUnit({ abilities: ["charge"], maxCombatMp: 2, combatMoveSpentThisTurn: 1 });
+  const captain = makeUnit({ abilities: ["charge"], maxCombatMp: 3, combatMoveSpentThisTurn: 1 });
+
+  assert.equal(getChargeThreshold(brute), 1);
+  assert.equal(getChargeThreshold(captain), 1);
+  assert.equal(isChargeActive(brute), true);
+  assert.equal(isChargeActive(captain), true);
+});
+
+test("charge increases attack and damage by 2 on attack profiles", () => {
+  const attacker = makeUnit({
+    attack: 15,
+    damage: 16,
+    abilities: ["charge"],
+    maxCombatMp: 2,
+    combatMoveSpentThisTurn: 1
+  });
+
+  const profile = getMeleeProfile(attacker);
+
+  assert.equal(profile.attack, 17);
+  assert.equal(profile.damage, 18);
+  assert.deepEqual(profile.modifiers, ["charge"]);
 });

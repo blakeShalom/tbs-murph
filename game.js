@@ -70,7 +70,7 @@ const CENTAUR_UNIT_ARCHETYPES = [
     loadout: "Plate Armor + Two-Handed Axe",
     coatColor: "#694f39",
     stats: { hp: 28, attack: 15, damage: 16, armor: 17, evasiveness: 5, combatMp: 2 },
-    abilities: []
+    abilities: ["charge"]
   },
   {
     id: "marksman",
@@ -86,7 +86,7 @@ const CENTAUR_UNIT_ARCHETYPES = [
     loadout: "Long Axe + Medium Armor",
     coatColor: "#d8d4cb",
     stats: { hp: 25, attack: 16, damage: 13, armor: 11, evasiveness: 9, combatMp: 3 },
-    abilities: []
+    abilities: ["charge"]
   }
 ];
 
@@ -113,7 +113,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Cerberus-like Demon Dog",
     coatColor: "#59352a",
     stats: { hp: 24, attack: 15, damage: 13, armor: 6, evasiveness: 10, combatMp: 4 },
-    abilities: []
+    abilities: ["charge"]
   },
   {
     id: "succubus",
@@ -355,6 +355,7 @@ function createCentaurUnit(side, race, index) {
     evasiveness: stats.evasiveness,
     maxCombatMp: stats.combatMp,
     currentCombatMp: 0,
+    combatMoveSpentThisTurn: 0,
     x: null,
     y: null
   };
@@ -386,6 +387,7 @@ function createDemonUnit(side, race, index) {
     evasiveness: stats.evasiveness,
     maxCombatMp: stats.combatMp,
     currentCombatMp: 0,
+    combatMoveSpentThisTurn: 0,
     x: null,
     y: null
   };
@@ -410,6 +412,7 @@ function createDefaultUnit(side, race, index) {
     evasiveness: randomInt(1, 20),
     maxCombatMp: randomInt(1, 3),
     currentCombatMp: 0,
+    combatMoveSpentThisTurn: 0,
     x: null,
     y: null
   };
@@ -1661,6 +1664,10 @@ function getUnitAbilities(unit) {
     entries.push("Passive: Marksmanship (+1 Archery RNG, +2 Archery ATK, +2 Archery DMG)");
   }
 
+  if (hasAbility(unit, "charge")) {
+    entries.push("Passive: Charge (+2 ATK, +2 DMG after moving at least half MOV)");
+  }
+
   return entries;
 }
 
@@ -1681,6 +1688,13 @@ function formatUnitIdentity(unit) {
 
 function formatUnitLoadout(unit) {
   return unit.loadout ? `<div>${unit.loadout}</div>` : "";
+}
+
+function formatUnitCombatEffectsHtml(unit) {
+  if (!isChargeActive(unit)) {
+    return "";
+  }
+  return "<div>Charge primed: +2 ATK, +2 DMG on next attack</div>";
 }
 
 function setTooltipHtml(html, x, y) {
@@ -1876,8 +1890,28 @@ function adjacentTargets(attacker, defenderSide) {
   return getAliveUnits(defenderSide).filter((unit) => manhattan(attacker, unit) === 1);
 }
 
+function getChargeThreshold(unit) {
+  return Math.max(1, Math.floor(unit.maxCombatMp / 2));
+}
+
+function isChargeActive(unit) {
+  return hasAbility(unit, "charge") && (unit.combatMoveSpentThisTurn || 0) >= getChargeThreshold(unit);
+}
+
+function applyAttackModifiers(attacker, profile) {
+  const nextProfile = { ...profile };
+
+  if (isChargeActive(attacker)) {
+    nextProfile.attack += 2;
+    nextProfile.damage += 2;
+    nextProfile.modifiers = [...(nextProfile.modifiers || []), "charge"];
+  }
+
+  return nextProfile;
+}
+
 function getMeleeProfile(attacker) {
-  return {
+  return applyAttackModifiers(attacker, {
     id: "melee",
     label: "melee",
     attack: attacker.attack,
@@ -1885,7 +1919,7 @@ function getMeleeProfile(attacker) {
     range: 1,
     targeting: "adjacent",
     priority: 0
-  };
+  });
 }
 
 function getArcheryProfile(attacker) {
@@ -1896,7 +1930,7 @@ function getArcheryProfile(attacker) {
   const marksmanshipBonus = hasAbility(attacker, "marksmanship") ? 2 : 0;
   const rangeBonus = hasAbility(attacker, "marksmanship") ? 1 : 0;
 
-  return {
+  return applyAttackModifiers(attacker, {
     id: "archery",
     label: "shot",
     attack: Math.max(1, attacker.attack - 2 + marksmanshipBonus),
@@ -1904,7 +1938,7 @@ function getArcheryProfile(attacker) {
     range: 2 + rangeBonus,
     targeting: "orthogonal-line",
     priority: 1
-  };
+  });
 }
 
 function isClearOrthogonalShot(attacker, defender) {
@@ -2122,6 +2156,7 @@ function checkCombatEnd() {
 function resetCombatMp(side) {
   for (const unit of getAliveUnits(side)) {
     unit.currentCombatMp = unit.maxCombatMp;
+    unit.combatMoveSpentThisTurn = 0;
   }
 }
 
@@ -2364,6 +2399,7 @@ function moveCombatActiveUnit(key) {
   active.x = nx;
   active.y = ny;
   active.currentCombatMp -= terrainRule.cost;
+  active.combatMoveSpentThisTurn = (active.combatMoveSpentThisTurn || 0) + terrainRule.cost;
 
   statusEl.textContent = `Combat View: ${unitName(active)} moved to (${nx}, ${ny}) on ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
   updateControls();
@@ -2525,6 +2561,7 @@ function enemyCombatTurn() {
         unit.x = option.x;
         unit.y = option.y;
         unit.currentCombatMp -= terrainRule.cost;
+        unit.combatMoveSpentThisTurn = (unit.combatMoveSpentThisTurn || 0) + terrainRule.cost;
         moved = true;
         break;
       }
@@ -2822,7 +2859,7 @@ function buildMapStackTooltipHtml(side) {
   const stack = state.stacks[side];
   const units = getAliveUnits(side);
   const lines = units
-    .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}`)
+    .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${formatUnitCombatEffectsHtml(unit)}`)
     .join("");
   return `<strong>${stack.race} Stack (${units.length} units)</strong>${lines}`;
 }
@@ -2844,7 +2881,7 @@ function buildCombatUnitTooltipHtml(side, unit) {
     }
     hitChanceText = lines.join("");
   }
-  return `<strong>${state.stacks[side].race} ${formatUnitIdentity(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${hitChanceText}`;
+  return `<strong>${state.stacks[side].race} ${formatUnitIdentity(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${formatUnitCombatEffectsHtml(unit)}${hitChanceText}`;
 }
 
 function updateHoveredEntity(event) {
@@ -2954,6 +2991,7 @@ function renderGameToText() {
           maxArmor: unit.maxArmor,
           moveCurrent: unit.currentCombatMp,
           moveMax: unit.maxCombatMp,
+          moveSpentThisTurn: unit.combatMoveSpentThisTurn || 0,
           attack: unit.attack,
           damage: unit.damage,
           evasiveness: unit.evasiveness,
@@ -2982,6 +3020,7 @@ function renderGameToText() {
           maxArmor: unit.maxArmor,
           moveCurrent: unit.currentCombatMp,
           moveMax: unit.maxCombatMp,
+          moveSpentThisTurn: unit.combatMoveSpentThisTurn || 0,
           attack: unit.attack,
           damage: unit.damage,
           evasiveness: unit.evasiveness,
@@ -3023,6 +3062,7 @@ function renderGameToText() {
             maxArmor: unit.maxArmor,
             moveCurrent: unit.currentCombatMp,
             moveMax: unit.maxCombatMp,
+            moveSpentThisTurn: unit.combatMoveSpentThisTurn || 0,
             attack: unit.attack,
             damage: unit.damage,
             evasiveness: unit.evasiveness
