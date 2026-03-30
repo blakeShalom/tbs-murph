@@ -275,3 +275,39 @@ Validation for `Charge` pass:
 TODO / suggestions:
 - The smoke run landed on `Emberkin` rather than `Centaur Clans`, so browser validation covered the new movement-state export but did not naturally roll a `Brute`/`Captain` tooltip in the skill-client scenario.
 - If `Charge` becomes a heavily-used mechanic, add a deterministic roster/debug seed so Playwright can force a charge-capable centaur and assert its primed state after movement.
+
+- Implemented stack-capacity and elemental ability systems in the live runtime.
+  - Base stack capacity is now `8`, with computed modifiers layered on top.
+  - `Leadership` is active on Centaur `Captain` units and increases stack capacity by `+1` per captain in the stack.
+  - Added `Forestry` to all Centaurs and introduced real combat `forest` terrain, replacing `cover`.
+  - Added `Call of Bravery` for Centaur captains:
+    - visible in tooltips/UI
+    - once per captain per battle
+    - blocked while the buff is already active on that side
+    - consumes all combat movement
+    - grants `+1 ATK`, `+1 DMG`, `+1 EVA` for `3` turn swaps
+  - Added Demon fire kit:
+    - `Fire Strike` on `Hell Hound`, `Succubus`, `Incubus`, `Gog`, `Arch Fiend`
+    - `Fire Protection` on all demons except `Incubus`
+    - `Fire Immunity` on `Incubus`
+    - `Fireball` on `Gog` as a `3x3` friendly-fire AoE with range `2` that uses all combat movement
+  - Added status tracking for `burning` and `call-of-bravery`, exposed in tooltips and `render_game_to_text`.
+  - Generalized combat attack-side effects so future ranged/special attacks can reuse the same pipeline.
+
+- Added/expanded pure-rule test coverage in `src/systems/attackProfiles.js` and `tests/attack_profiles.test.js`.
+  - Covered: leadership stack cap, forestry movement costs, call-of-bravery activation/bonuses/expiry, fire strike chance/protection/immunity, burning duration/damage, and fireball area/range/friendly fire.
+
+- Fixed a browser-discovered runtime bug during validation:
+  - Enlarged stacks could exceed the old combat deployment footprint and leave units with `x/y = null`.
+  - `placeCombatUnits()` now uses a broader passable-column deployment layout so legal expanded stacks fully enter combat.
+
+Validation for ability-system pass:
+- Unit tests: `npm test` passing (`59/59`).
+- Required skill Playwright client runs:
+  - `output/web-game/ability-system-validation/`
+  - `output/web-game/ability-system-validation-2/`
+  - Second validation run confirmed no `null` combat positions in exported state after the deployment fix.
+- Focused Playwright validation:
+  - Explicit `Centaur Clans` vs `Demon Horde` setup confirmed Centaur capacity growth (`10/10` in sampled run) and live archetype/ability payloads in `render_game_to_text`.
+- Browser console note:
+  - observed setup-page console error is the existing `favicon.ico` `404`; no new gameplay/runtime error artifacts were produced by the validation runs.

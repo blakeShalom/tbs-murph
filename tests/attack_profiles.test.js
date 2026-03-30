@@ -2,14 +2,31 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  activateCallOfBravery,
+  applyAttackModifiers,
+  BURNING_TURNS,
+  CALL_OF_BRAVERY_TURNS,
+  createBurningStatus,
+  createCallOfBraveryStatus,
   getChargeThreshold,
   getArcheryProfile,
   getAttackCandidates,
   getAvailableAttackProfiles,
+  getBurningDamagePerTurn,
+  getCombatMovementCost,
+  getFireballAffectedUnits,
+  getFireballAreaTiles,
+  getFireStrikeIgniteChance,
+  getCallOfBraveryBonusForUnit,
+  getLeadershipBonus,
   getMeleeProfile,
+  getMapMovementCost,
   getRangedTargets,
+  getStackCapacityLimit,
   isChargeActive,
-  isClearOrthogonalShot
+  isClearOrthogonalShot,
+  resolveFireStrike,
+  tickTimedStatuses
 } from "../src/systems/attackProfiles.js";
 
 function makeUnit(overrides = {}) {
@@ -21,6 +38,8 @@ function makeUnit(overrides = {}) {
     damage: 8,
     maxCombatMp: 3,
     combatMoveSpentThisTurn: 0,
+    currentCombatMp: 1,
+    side: "player",
     abilities: [],
     ...overrides
   };
@@ -112,4 +131,106 @@ test("charge increases attack and damage by 2 on attack profiles", () => {
   assert.equal(profile.attack, 17);
   assert.equal(profile.damage, 18);
   assert.deepEqual(profile.modifiers, ["charge"]);
+});
+
+test("stack capacity starts at 8 and leadership adds one per captain", () => {
+  const stack = {
+    units: [
+      makeUnit({ abilities: ["leadership"] }),
+      makeUnit({ abilities: ["leadership"] }),
+      makeUnit({})
+    ],
+    capacityModifiers: [{ bonus: 2 }]
+  };
+
+  assert.equal(getLeadershipBonus(stack.units), 2);
+  assert.equal(getStackCapacityLimit(stack), 12);
+});
+
+test("forestry lowers forest movement cost on both map and combat terrain", () => {
+  const centaur = makeUnit({ abilities: ["forestry"] });
+
+  assert.equal(getMapMovementCost("forest", centaur), 1);
+  assert.equal(getCombatMovementCost("forest", centaur), 1);
+  assert.equal(getMapMovementCost("forest", makeUnit()), 2);
+  assert.equal(getCombatMovementCost("forest", makeUnit()), 2);
+});
+
+test("call of bravery creates a three turn battle buff and blocks duplicate activation", () => {
+  const captain = makeUnit({ id: "C1", abilities: ["call-of-bravery"], currentCombatMp: 2 });
+  const battle = { statuses: [createCallOfBraveryStatus("C1", "player")] };
+
+  assert.equal(activateCallOfBravery(captain, battle).ok, false);
+  assert.equal(createCallOfBraveryStatus("C1").turnsRemaining, CALL_OF_BRAVERY_TURNS);
+});
+
+test("call of bravery adds the expected allied stat bonuses and expires on tick", () => {
+  const captain = makeUnit({ id: "C1", abilities: ["call-of-bravery"], currentCombatMp: 2 });
+  const battle = activateCallOfBravery(captain, { statuses: [] });
+  const bonus = applyAttackModifiers(captain, { id: "melee", label: "melee", attack: 10, damage: 8, range: 1, targeting: "adjacent", priority: 0 }, battle.statuses);
+  const unitBonus = getCallOfBraveryBonusForUnit(captain, battle.statuses);
+
+  assert.equal(battle.ok, true);
+  assert.equal(battle.statuses[0].turnsRemaining, CALL_OF_BRAVERY_TURNS);
+  assert.equal(bonus.attack, 11);
+  assert.equal(bonus.damage, 9);
+  assert.equal(unitBonus.attack, 1);
+  assert.equal(unitBonus.damage, 1);
+  assert.equal(unitBonus.evasiveness, 1);
+  assert.equal(tickTimedStatuses(tickTimedStatuses(tickTimedStatuses(battle.statuses))).length, 0);
+});
+
+test("fire strike ignition is 50 percent on evenly matched units and respects protection and immunity", () => {
+  const attacker = makeUnit({ abilities: ["fire-strike"] });
+  const defender = makeUnit({ evasiveness: 10, abilities: [] });
+  const protectedDefender = makeUnit({ evasiveness: 10, abilities: ["fire-protection"] });
+  const immuneDefender = makeUnit({ evasiveness: 10, abilities: ["fire-immunity"] });
+
+  assert.equal(getFireStrikeIgniteChance(defender, { attackValue: 10 }), 50);
+  assert.equal(getFireStrikeIgniteChance(protectedDefender, { attackValue: 10 }), 25);
+  assert.equal(getFireStrikeIgniteChance(immuneDefender, { attackValue: 10 }), 0);
+  assert.equal(getBurningDamagePerTurn(defender), 2);
+  assert.equal(getBurningDamagePerTurn(protectedDefender), 1);
+  assert.equal(getBurningDamagePerTurn(immuneDefender), 0);
+  assert.equal(attacker.abilities.includes("fire-strike"), true);
+  assert.equal(resolveFireStrike(attacker, immuneDefender, { roll: 0.0 }).blockedByImmunity, true);
+});
+
+test("burning status lasts three turns and carries the resolved damage per turn", () => {
+  const defender = makeUnit({ abilities: ["fire-protection"] });
+  const status = createBurningStatus("A1", "enemy", defender);
+
+  assert.equal(status.turnsRemaining, BURNING_TURNS);
+  assert.equal(status.data.damagePerTurn, 1);
+});
+
+test("fireball targets a 3x3 square at quarter-field range and includes friendly fire", () => {
+  const caster = makeUnit({ x: 3, y: 3 });
+  const target = { x: 5, y: 3 };
+  const units = [
+    { id: "A", x: 4, y: 2 },
+    { id: "B", x: 5, y: 3 },
+    { id: "C", x: 6, y: 4 },
+    { id: "D", x: 0, y: 0 }
+  ];
+
+  const tiles = getFireballAreaTiles(target, 8);
+  const affected = getFireballAffectedUnits(caster, target, units, 8);
+
+  assert.equal(tiles.length, 9);
+  assert.equal(affected.inRange, true);
+  assert.deepEqual(
+    affected.affectedUnits.map((unit) => unit.id).sort(),
+    ["A", "B", "C"]
+  );
+});
+
+test("fireball respects range and clips at the battlefield edge", () => {
+  const caster = makeUnit({ x: 1, y: 1 });
+  const target = { x: 7, y: 7 };
+  const affected = getFireballAffectedUnits(caster, target, [{ id: "A", x: 7, y: 7 }], 8);
+
+  assert.equal(affected.inRange, false);
+  assert.equal(affected.areaTiles.length, 0);
+  assert.equal(affected.affectedUnits.length, 0);
 });

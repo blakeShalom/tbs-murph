@@ -8,6 +8,13 @@ const MIN_HIT_CHANCE = 10;
 const MAX_HIT_CHANCE = 95;
 const DAMAGE_EXP_LAMBDA = 2.25;
 const MAX_COMBAT_LOG_ENTRIES = 40;
+const BASE_STACK_CAPACITY = 8;
+const FIRE_STRIKE_ATTACK = 10;
+const FIRE_STRIKE_BASE_DURATION = 3;
+const FIRE_STRIKE_BASE_TICK = 2;
+const FIREBALL_ATTACK = 10;
+const FIREBALL_DAMAGE = 8;
+const FIREBALL_RANGE = 2;
 const RACE_PREVIEW_WIDTH = 300;
 const RACE_PREVIEW_HEIGHT = 170;
 const MAP_ART_SIZE = 64;
@@ -26,7 +33,7 @@ const MAP_TERRAIN_RULES = {
 const COMBAT_TERRAIN_RULES = {
   open: { label: "Open", cost: 1, passable: true, color: "#e6dbbf" },
   rough: { label: "Rough", cost: 2, passable: true, color: "#c6b487" },
-  cover: { label: "Cover", cost: 1, passable: true, color: "#9ab287" },
+  forest: { label: "Forest", cost: 2, passable: true, color: "#8daa74" },
   blocked: { label: "Blocked", cost: Infinity, passable: false, color: "#6f6759" }
 };
 
@@ -62,7 +69,7 @@ const CENTAUR_UNIT_ARCHETYPES = [
     loadout: "Short Bow + Light Sword",
     coatColor: "#8f6a49",
     stats: { hp: 18, attack: 11, damage: 7, armor: 3, evasiveness: 15, combatMp: 4 },
-    abilities: ["archery"]
+    abilities: ["archery", "forestry"]
   },
   {
     id: "brute",
@@ -70,7 +77,7 @@ const CENTAUR_UNIT_ARCHETYPES = [
     loadout: "Plate Armor + Two-Handed Axe",
     coatColor: "#694f39",
     stats: { hp: 28, attack: 15, damage: 16, armor: 17, evasiveness: 5, combatMp: 2 },
-    abilities: ["charge"]
+    abilities: ["charge", "forestry"]
   },
   {
     id: "marksman",
@@ -78,7 +85,7 @@ const CENTAUR_UNIT_ARCHETYPES = [
     loadout: "Longbow + Short Sword + Leather Armor",
     coatColor: "#765b3f",
     stats: { hp: 21, attack: 14, damage: 11, armor: 7, evasiveness: 12, combatMp: 3 },
-    abilities: ["archery", "marksmanship"]
+    abilities: ["archery", "marksmanship", "forestry"]
   },
   {
     id: "captain",
@@ -86,7 +93,7 @@ const CENTAUR_UNIT_ARCHETYPES = [
     loadout: "Long Axe + Medium Armor",
     coatColor: "#d8d4cb",
     stats: { hp: 25, attack: 16, damage: 13, armor: 11, evasiveness: 9, combatMp: 3 },
-    abilities: ["charge"]
+    abilities: ["charge", "leadership", "call-of-bravery", "forestry"]
   }
 ];
 
@@ -97,7 +104,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Hooves + Wings + Horns",
     coatColor: "#7c5742",
     stats: { hp: 16, attack: 10, damage: 6, armor: 2, evasiveness: 12, combatMp: 3 },
-    abilities: []
+    abilities: ["fire-protection"]
   },
   {
     id: "gog",
@@ -105,7 +112,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Firebody + Fireball Throw",
     coatColor: "#b4472e",
     stats: { hp: 20, attack: 13, damage: 11, armor: 5, evasiveness: 11, combatMp: 3 },
-    abilities: []
+    abilities: ["fire-strike", "fire-protection", "fireball"]
   },
   {
     id: "hell-hound",
@@ -113,7 +120,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Cerberus-like Demon Dog",
     coatColor: "#59352a",
     stats: { hp: 24, attack: 15, damage: 13, armor: 6, evasiveness: 10, combatMp: 4 },
-    abilities: ["charge"]
+    abilities: ["charge", "fire-strike", "fire-protection"]
   },
   {
     id: "succubus",
@@ -121,7 +128,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Winged Demon",
     coatColor: "#8f4b59",
     stats: { hp: 19, attack: 14, damage: 10, armor: 4, evasiveness: 15, combatMp: 3 },
-    abilities: []
+    abilities: ["fire-strike", "fire-protection"]
   },
   {
     id: "incubus",
@@ -129,7 +136,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Fire Djinni Demon",
     coatColor: "#9a5137",
     stats: { hp: 23, attack: 16, damage: 14, armor: 8, evasiveness: 11, combatMp: 3 },
-    abilities: []
+    abilities: ["fire-strike", "fire-immunity"]
   },
   {
     id: "arch-fiend",
@@ -137,7 +144,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Battle Axe + Claws + Black Plate",
     coatColor: "#aa2f23",
     stats: { hp: 29, attack: 18, damage: 17, armor: 16, evasiveness: 7, combatMp: 2 },
-    abilities: []
+    abilities: ["fire-strike", "fire-protection"]
   }
 ];
 
@@ -251,6 +258,8 @@ const combatMpLabelEl = document.getElementById("combatMpLabel");
 const raceALabelEl = document.getElementById("raceALabel");
 const raceBLabelEl = document.getElementById("raceBLabel");
 const attackBtn = document.getElementById("attackBtn");
+const braveryBtn = document.getElementById("braveryBtn");
+const fireballBtn = document.getElementById("fireballBtn");
 const endTurnBtn = document.getElementById("endTurnBtn");
 const resetBtn = document.getElementById("resetBtn");
 
@@ -346,6 +355,8 @@ function createCentaurUnit(side, race, index) {
     archetypeId: archetype.id,
     coatColor: archetype.coatColor,
     abilities: [...(archetype.abilities || [])],
+    statuses: [],
+    usedAbilities: {},
     hp: maxHp,
     maxHp,
     attack: stats.attack,
@@ -378,6 +389,8 @@ function createDemonUnit(side, race, index) {
     archetypeId: archetype.id,
     coatColor: archetype.coatColor,
     abilities: [...(archetype.abilities || [])],
+    statuses: [],
+    usedAbilities: {},
     hp: maxHp,
     maxHp,
     attack: stats.attack,
@@ -403,6 +416,8 @@ function createDefaultUnit(side, race, index) {
     unitRaceId: race.id,
     alive: true,
     abilities: [],
+    statuses: [],
+    usedAbilities: {},
     hp: maxHp,
     maxHp,
     attack: randomInt(1, 20),
@@ -419,17 +434,24 @@ function createDefaultUnit(side, race, index) {
 }
 
 function createStack(side, race, x, y) {
-  const count = randomInt(1, 8);
   const units = [];
+  let cap = BASE_STACK_CAPACITY;
+  const minimumCount = randomInt(1, BASE_STACK_CAPACITY);
 
-  for (let i = 0; i < count; i += 1) {
+  const makeUnit = (index) => {
     if (race.id === "centaur-clans") {
-      units.push(createCentaurUnit(side, race, i));
-    } else if (race.id === "demon-horde") {
-      units.push(createDemonUnit(side, race, i));
-    } else {
-      units.push(createDefaultUnit(side, race, i));
+      return createCentaurUnit(side, race, index);
     }
+    if (race.id === "demon-horde") {
+      return createDemonUnit(side, race, index);
+    }
+    return createDefaultUnit(side, race, index);
+  };
+
+  while (units.length < cap && (units.length < minimumCount || units.length < getStackCapacity(units))) {
+    const unit = makeUnit(units.length);
+    units.push(unit);
+    cap = getStackCapacity(units);
   }
 
   return {
@@ -439,6 +461,8 @@ function createStack(side, race, x, y) {
     color: race.color,
     x,
     y,
+    baseCapacity: BASE_STACK_CAPACITY,
+    capacity: getStackCapacity(units),
     maxMapMp: 3,
     currentMapMp: 3,
     units
@@ -533,7 +557,7 @@ function createCombatTerrain(size) {
       } else if (noise % 5 === 0) {
         tile = "rough";
       } else if (noise % 3 === 0) {
-        tile = "cover";
+        tile = "forest";
       }
 
       row.push(tile);
@@ -1631,8 +1655,8 @@ function toSubscript(n) {
     .join("");
 }
 
-function getHitChance(attacker, defender, attackValue = attacker.attack) {
-  const modified = BASE_HIT_CHANCE + (attackValue - defender.evasiveness) * 2;
+function getHitChance(attacker, defender, attackValue = getEffectiveAttack(attacker)) {
+  const modified = BASE_HIT_CHANCE + (attackValue - getEffectiveEvasiveness(defender)) * 2;
   return clamp(modified, MIN_HIT_CHANCE, MAX_HIT_CHANCE);
 }
 
@@ -1645,11 +1669,186 @@ function formatUnitStatLine(unit, includeCurrentMove = false) {
   const moveText = includeCurrentMove
     ? `${unit.currentCombatMp}/${unit.maxCombatMp}`
     : `${unit.maxCombatMp}`;
-  return `HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${unit.attack} DMG ${unit.damage} EVA ${unit.evasiveness} MOV ${moveText}`;
+  return `HP ${unit.hp}/${unit.maxHp} ARM ${unit.armor}/${unit.maxArmor} ATK ${getEffectiveAttack(unit)} DMG ${getEffectiveDamage(unit)} EVA ${getEffectiveEvasiveness(unit)} MOV ${moveText}`;
 }
 
 function hasAbility(unit, abilityId) {
   return Array.isArray(unit.abilities) && unit.abilities.includes(abilityId);
+}
+
+function getStackCapacity(units) {
+  const leadershipBonus = units.reduce(
+    (total, unit) => total + (hasAbility(unit, "leadership") ? 1 : 0),
+    0
+  );
+  return BASE_STACK_CAPACITY + leadershipBonus;
+}
+
+function getStatus(unit, statusId) {
+  return (unit.statuses || []).find((status) => status.id === statusId) || null;
+}
+
+function hasStatus(unit, statusId) {
+  return Boolean(getStatus(unit, statusId));
+}
+
+function addOrRefreshStatus(unit, status) {
+  if (!Array.isArray(unit.statuses)) {
+    unit.statuses = [];
+  }
+  const existing = unit.statuses.find((entry) => entry.id === status.id);
+  if (existing) {
+    Object.assign(existing, status);
+    return existing;
+  }
+  unit.statuses.push({ ...status });
+  return unit.statuses.at(-1);
+}
+
+function removeExpiredStatuses(unit) {
+  if (!Array.isArray(unit.statuses)) {
+    unit.statuses = [];
+  }
+  unit.statuses = unit.statuses.filter((status) => status.turnsRemaining > 0);
+}
+
+function getStatusBonus(unit, stat) {
+  let bonus = 0;
+  for (const status of unit.statuses || []) {
+    if (status.id === "call-of-bravery") {
+      if (stat === "attack" || stat === "damage" || stat === "evasiveness") {
+        bonus += 1;
+      }
+    }
+  }
+  return bonus;
+}
+
+function getEffectiveAttack(unit) {
+  return unit.attack + getStatusBonus(unit, "attack");
+}
+
+function getEffectiveDamage(unit) {
+  return unit.damage + getStatusBonus(unit, "damage");
+}
+
+function getEffectiveEvasiveness(unit) {
+  return unit.evasiveness + getStatusBonus(unit, "evasiveness");
+}
+
+function getWorldMoveCost(stack, terrainType) {
+  if (terrainType === "forest" && stack.raceId === "centaur-clans") {
+    return 1;
+  }
+  return getMapTerrainRule(terrainType).cost;
+}
+
+function getCombatMoveCost(unit, terrainType) {
+  if (terrainType === "forest" && hasAbility(unit, "forestry")) {
+    return 1;
+  }
+  return getCombatTerrainRule(terrainType).cost;
+}
+
+function getFireStrikeChance(attacker, defender) {
+  if (hasAbility(defender, "fire-immunity")) {
+    return 0;
+  }
+  const base = clamp(50 + (FIRE_STRIKE_ATTACK - getEffectiveEvasiveness(defender)) * 2, 10, 95);
+  return hasAbility(defender, "fire-protection") ? Math.floor(base / 2) : base;
+}
+
+function applyBurning(target) {
+  if (hasAbility(target, "fire-immunity")) {
+    return false;
+  }
+  addOrRefreshStatus(target, {
+    id: "burning",
+    turnsRemaining: FIRE_STRIKE_BASE_DURATION,
+    tickDamage: hasAbility(target, "fire-protection") ? 1 : FIRE_STRIKE_BASE_TICK
+  });
+  return true;
+}
+
+function attemptFireStrike(attacker, defender) {
+  if (!hasAbility(attacker, "fire-strike") || !defender.alive) {
+    return { applied: false, chance: 0, roll: null };
+  }
+
+  const chance = getFireStrikeChance(attacker, defender);
+  if (chance <= 0) {
+    return { applied: false, chance, roll: null };
+  }
+
+  const roll = randomInt(1, 100);
+  if (roll > chance) {
+    return { applied: false, chance, roll };
+  }
+
+  return { applied: applyBurning(defender), chance, roll };
+}
+
+function applyBurningTick(side) {
+  let anyDeaths = false;
+
+  for (const unit of getAliveUnits(side)) {
+    const burning = getStatus(unit, "burning");
+    if (!burning) continue;
+
+    unit.hp = Math.max(0, unit.hp - burning.tickDamage);
+    burning.turnsRemaining -= 1;
+    if (unit.hp <= 0) {
+      eliminateUnit(unit);
+      anyDeaths = true;
+    }
+    removeExpiredStatuses(unit);
+  }
+
+  return anyDeaths;
+}
+
+function decrementTurnSwapStatuses() {
+  for (const side of ["player", "enemy"]) {
+    for (const unit of getAliveUnits(side)) {
+      for (const status of unit.statuses || []) {
+        if (status.id === "call-of-bravery") {
+          status.turnsRemaining -= 1;
+        }
+      }
+      removeExpiredStatuses(unit);
+    }
+  }
+}
+
+function isCallOfBraveryActive(side) {
+  return getAliveUnits(side).some((unit) => hasStatus(unit, "call-of-bravery"));
+}
+
+function canUseCallOfBravery(unit) {
+  if (!hasAbility(unit, "call-of-bravery") || !unit.alive) {
+    return false;
+  }
+  if (unit.usedAbilities?.callOfBravery) {
+    return false;
+  }
+  return !isCallOfBraveryActive(unit.side);
+}
+
+function applyCallOfBravery(unit) {
+  if (!canUseCallOfBravery(unit)) {
+    return false;
+  }
+
+  for (const ally of getAliveUnits(unit.side)) {
+    addOrRefreshStatus(ally, {
+      id: "call-of-bravery",
+      turnsRemaining: 3
+    });
+  }
+
+  unit.usedAbilities.callOfBravery = true;
+  unit.currentCombatMp = 0;
+  return true;
 }
 
 function getUnitAbilities(unit) {
@@ -1666,6 +1865,34 @@ function getUnitAbilities(unit) {
 
   if (hasAbility(unit, "charge")) {
     entries.push("Passive: Charge (+2 ATK, +2 DMG after moving at least half MOV)");
+  }
+
+  if (hasAbility(unit, "leadership")) {
+    entries.push("Passive: Leadership (+1 stack capacity)");
+  }
+
+  if (hasAbility(unit, "call-of-bravery")) {
+    entries.push("Active: Call of Bravery (+1 ATK, +1 DMG, +1 EVA to all allies for 3 turn swaps)");
+  }
+
+  if (hasAbility(unit, "forestry")) {
+    entries.push("Passive: Forestry (normal movement through forest)");
+  }
+
+  if (hasAbility(unit, "fire-strike")) {
+    entries.push(`Passive: Fire Strike (${FIRE_STRIKE_BASE_DURATION} turns burning on ignite)`);
+  }
+
+  if (hasAbility(unit, "fire-protection")) {
+    entries.push("Passive: Fire Protection (half ignite chance, burning deals 1)");
+  }
+
+  if (hasAbility(unit, "fire-immunity")) {
+    entries.push("Passive: Fire Immunity (cannot be burned)");
+  }
+
+  if (hasAbility(unit, "fireball")) {
+    entries.push(`Active: Fireball (RNG ${FIREBALL_RANGE}, 3x3 splash, friendly fire, uses all MOV)`);
   }
 
   return entries;
@@ -1691,10 +1918,20 @@ function formatUnitLoadout(unit) {
 }
 
 function formatUnitCombatEffectsHtml(unit) {
-  if (!isChargeActive(unit)) {
-    return "";
+  const lines = [];
+
+  if (isChargeActive(unit)) {
+    lines.push("Charge primed: +2 ATK, +2 DMG on next attack");
   }
-  return "<div>Charge primed: +2 ATK, +2 DMG on next attack</div>";
+  if (hasStatus(unit, "call-of-bravery")) {
+    lines.push(`Call of Bravery active: ${getStatus(unit, "call-of-bravery").turnsRemaining} swaps left`);
+  }
+  if (hasStatus(unit, "burning")) {
+    const burning = getStatus(unit, "burning");
+    lines.push(`Burning: ${burning.tickDamage} HP for ${burning.turnsRemaining} more turns`);
+  }
+
+  return lines.length > 0 ? `<div>${lines.join(" | ")}</div>` : "";
 }
 
 function setTooltipHtml(html, x, y) {
@@ -1914,8 +2151,8 @@ function getMeleeProfile(attacker) {
   return applyAttackModifiers(attacker, {
     id: "melee",
     label: "melee",
-    attack: attacker.attack,
-    damage: attacker.damage,
+    attack: getEffectiveAttack(attacker),
+    damage: getEffectiveDamage(attacker),
     range: 1,
     targeting: "adjacent",
     priority: 0
@@ -1933,8 +2170,8 @@ function getArcheryProfile(attacker) {
   return applyAttackModifiers(attacker, {
     id: "archery",
     label: "shot",
-    attack: Math.max(1, attacker.attack - 2 + marksmanshipBonus),
-    damage: Math.max(1, attacker.damage - 2 + marksmanshipBonus),
+    attack: Math.max(1, getEffectiveAttack(attacker) - 2 + marksmanshipBonus),
+    damage: Math.max(1, getEffectiveDamage(attacker) - 2 + marksmanshipBonus),
     range: 2 + rangeBonus,
     targeting: "orthogonal-line",
     priority: 1
@@ -2140,6 +2377,102 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender, profile =
   };
 }
 
+function formatFireStrikeLog(attacker, defender, fireResult) {
+  if (fireResult.roll == null) {
+    return `${unitName(attacker)} fire strike had no effect on ${unitName(defender)}.`;
+  }
+  if (!fireResult.applied) {
+    return `${unitName(attacker)} fire strike failed on ${unitName(defender)} (${fireResult.roll}/${fireResult.chance}%).`;
+  }
+  return `${unitName(attacker)} ignited ${unitName(defender)} (${fireResult.roll}/${fireResult.chance}%).`;
+}
+
+function applyAttackSideEffects(attacker, defender, result) {
+  if (!result.hit || !defender.alive) {
+    return [];
+  }
+
+  const fireResult = attemptFireStrike(attacker, defender);
+  if (fireResult.roll == null && !fireResult.applied) {
+    return [];
+  }
+  return [formatFireStrikeLog(attacker, defender, fireResult)];
+}
+
+function getFireballArea(centerX, centerY) {
+  const area = [];
+  for (let y = centerY - 1; y <= centerY + 1; y += 1) {
+    for (let x = centerX - 1; x <= centerX + 1; x += 1) {
+      if (inBounds(x, y, COMBAT_GRID_SIZE)) {
+        area.push({ x, y });
+      }
+    }
+  }
+  return area;
+}
+
+function getFireballTargets(attacker) {
+  if (!hasAbility(attacker, "fireball")) {
+    return [];
+  }
+
+  const targets = [];
+  for (let y = Math.max(0, attacker.y - FIREBALL_RANGE); y <= Math.min(COMBAT_GRID_SIZE - 1, attacker.y + FIREBALL_RANGE); y += 1) {
+    for (let x = Math.max(0, attacker.x - FIREBALL_RANGE); x <= Math.min(COMBAT_GRID_SIZE - 1, attacker.x + FIREBALL_RANGE); x += 1) {
+      if (chebyshev(attacker.x, attacker.y, x, y) > FIREBALL_RANGE) continue;
+      const units = getFireballArea(x, y)
+        .map((tile) => getCombatUnitAt(tile.x, tile.y))
+        .filter(Boolean);
+      if (units.length === 0) continue;
+
+      const enemyHits = units.filter((entry) => entry.side !== attacker.side).length;
+      const allyHits = units.filter((entry) => entry.side === attacker.side).length;
+      targets.push({
+        x,
+        y,
+        units,
+        score: enemyHits * 2 - allyHits
+      });
+    }
+  }
+
+  targets.sort((a, b) => b.score - a.score || a.units.length - b.units.length);
+  return targets;
+}
+
+function useFireball(attacker) {
+  const options = getFireballTargets(attacker);
+  if (options.length === 0) {
+    return { ok: false, reason: "no-target" };
+  }
+
+  const selected = options[0];
+  const profile = {
+    id: "fireball",
+    label: "fireball",
+    attack: FIREBALL_ATTACK,
+    damage: FIREBALL_DAMAGE,
+    range: FIREBALL_RANGE
+  };
+  const logEntries = [`${unitName(attacker)} casts Fireball at (${selected.x}, ${selected.y}).`];
+
+  for (const entry of selected.units) {
+    if (!entry.unit.alive) continue;
+    const result = resolveAttack(attacker.side, attacker, entry.side, entry.unit, profile);
+    if (!result.hit) {
+      logEntries.push(`${unitName(attacker)} fireball -> ${unitName(entry.unit)}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
+      continue;
+    }
+    logEntries.push(`${unitName(attacker)} fireball -> ${unitName(entry.unit)}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
+    for (const sideEffect of applyAttackSideEffects(attacker, entry.unit, result)) {
+      logEntries.push(sideEffect);
+    }
+  }
+
+  attacker.currentCombatMp = 0;
+  return { ok: true, logEntries, target: { x: selected.x, y: selected.y } };
+}
+
 function checkCombatEnd() {
   const playerCount = getStackCount("player");
   const enemyCount = getStackCount("enemy");
@@ -2160,20 +2493,48 @@ function resetCombatMp(side) {
   }
 }
 
+function beginCombatTurn(side) {
+  state.combatTurn = side;
+  decrementTurnSwapStatuses();
+  const burnDeaths = applyBurningTick(side);
+  if (burnDeaths) {
+    appendCombatLog(`${state.stacks[side].race} suffers burning damage at turn start.`);
+  }
+  if (checkCombatEnd()) {
+    updateControls();
+    draw();
+    return false;
+  }
+  resetCombatMp(side);
+  return true;
+}
+
 function placeCombatUnits() {
   const placeSide = (side) => {
     const alive = getAliveUnits(side);
     const slots = [];
-    const primaryX = side === "player" ? 1 : COMBAT_GRID_SIZE - 2;
-    const secondaryX = side === "player" ? 2 : COMBAT_GRID_SIZE - 3;
+    const preferredColumns = side === "player"
+      ? [1, 2, 0, 3]
+      : [COMBAT_GRID_SIZE - 2, COMBAT_GRID_SIZE - 3, COMBAT_GRID_SIZE - 1, COMBAT_GRID_SIZE - 4];
 
-    for (let y = 1; y < COMBAT_GRID_SIZE - 1; y += 1) {
-      slots.push({ x: primaryX, y });
-      slots.push({ x: secondaryX, y });
+    for (const x of preferredColumns) {
+      for (let y = 0; y < COMBAT_GRID_SIZE; y += 1) {
+        const terrainType = getCombatTerrainAt(x, y);
+        const terrainRule = getCombatTerrainRule(terrainType);
+        if (!terrainRule.passable) {
+          continue;
+        }
+        slots.push({ x, y });
+      }
     }
 
     for (let i = 0; i < alive.length; i += 1) {
       const slot = slots[i];
+      if (!slot) {
+        alive[i].x = null;
+        alive[i].y = null;
+        continue;
+      }
       alive[i].x = slot.x;
       alive[i].y = slot.y;
     }
@@ -2181,6 +2542,16 @@ function placeCombatUnits() {
 
   placeSide("player");
   placeSide("enemy");
+}
+
+function resetBattleState() {
+  for (const side of ["player", "enemy"]) {
+    for (const unit of state.stacks[side].units) {
+      unit.statuses = [];
+      unit.usedAbilities = {};
+      unit.combatMoveSpentThisTurn = 0;
+    }
+  }
 }
 
 function updateControls() {
@@ -2205,7 +2576,26 @@ function updateControls() {
     active.currentCombatMp > 0 &&
     getAttackCandidates(active, "enemy").length > 0;
 
+  const canBravery =
+    state.mode === "combat" &&
+    state.combatTurn === "player" &&
+    !state.gameOver &&
+    active &&
+    active.currentCombatMp > 0 &&
+    canUseCallOfBravery(active);
+
+  const canFireball =
+    state.mode === "combat" &&
+    state.combatTurn === "player" &&
+    !state.gameOver &&
+    active &&
+    active.currentCombatMp > 0 &&
+    hasAbility(active, "fireball") &&
+    getFireballTargets(active).length > 0;
+
   attackBtn.disabled = !canAttack;
+  if (braveryBtn) braveryBtn.disabled = !canBravery;
+  if (fireballBtn) fireballBtn.disabled = !canFireball;
   endTurnBtn.disabled = state.gameOver;
 }
 
@@ -2221,6 +2611,7 @@ function startCombat(initiator) {
     log: []
   };
   clearCombatLog();
+  resetBattleState();
 
   placeCombatUnits();
   resetCombatMp("player");
@@ -2269,16 +2660,17 @@ function moveMapStack(key) {
     return;
   }
 
-  if (stack.currentMapMp < terrainRule.cost) {
-    statusEl.textContent = `Map View: Need ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${stack.currentMapMp}.`;
+  const moveCost = getWorldMoveCost(stack, terrainType);
+  if (stack.currentMapMp < moveCost) {
+    statusEl.textContent = `Map View: Need ${moveCost} MP for ${terrainRule.label}. Remaining MP: ${stack.currentMapMp}.`;
     return;
   }
 
   stack.x = nx;
   stack.y = ny;
-  stack.currentMapMp -= terrainRule.cost;
+  stack.currentMapMp -= moveCost;
   revealFogArea(state.fog.player.explored, stack.x, stack.y, state.fog.player.radius);
-  statusEl.textContent = `Map View: ${stack.race} stack moved to (${nx}, ${ny}) on ${terrainRule.label} (${terrainRule.cost} MP). Remaining MP: ${stack.currentMapMp}.`;
+  statusEl.textContent = `Map View: ${stack.race} stack moved to (${nx}, ${ny}) on ${terrainRule.label} (${moveCost} MP). Remaining MP: ${stack.currentMapMp}.`;
 
   if (stack.x === state.stacks.enemy.x && stack.y === state.stacks.enemy.y) {
     startCombat("player");
@@ -2310,11 +2702,12 @@ function enemyMapTurn() {
       if (!inBounds(option.x, option.y, GRID_SIZE)) continue;
 
       const terrainRule = getMapTerrainRule(getMapTerrainAt(option.x, option.y));
-      if (!terrainRule.passable || terrainRule.cost > enemy.currentMapMp) {
+      const moveCost = getWorldMoveCost(enemy, getMapTerrainAt(option.x, option.y));
+      if (!terrainRule.passable || moveCost > enemy.currentMapMp) {
         continue;
       }
 
-      selected = { ...option, cost: terrainRule.cost };
+      selected = { ...option, cost: moveCost };
       break;
     }
 
@@ -2391,17 +2784,18 @@ function moveCombatActiveUnit(key) {
     return;
   }
 
-  if (active.currentCombatMp < terrainRule.cost) {
-    statusEl.textContent = `Combat View: ${unitName(active)} needs ${terrainRule.cost} MP for ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
+  const moveCost = getCombatMoveCost(active, terrainType);
+  if (active.currentCombatMp < moveCost) {
+    statusEl.textContent = `Combat View: ${unitName(active)} needs ${moveCost} MP for ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
     return;
   }
 
   active.x = nx;
   active.y = ny;
-  active.currentCombatMp -= terrainRule.cost;
-  active.combatMoveSpentThisTurn = (active.combatMoveSpentThisTurn || 0) + terrainRule.cost;
+  active.currentCombatMp -= moveCost;
+  active.combatMoveSpentThisTurn = (active.combatMoveSpentThisTurn || 0) + moveCost;
 
-  statusEl.textContent = `Combat View: ${unitName(active)} moved to (${nx}, ${ny}) on ${terrainRule.label}. Remaining MP: ${active.currentCombatMp}.`;
+  statusEl.textContent = `Combat View: ${unitName(active)} moved to (${nx}, ${ny}) on ${terrainRule.label} (${moveCost} MP). Remaining MP: ${active.currentCombatMp}.`;
   updateControls();
   draw();
 }
@@ -2418,6 +2812,9 @@ function performPlayerAttack(attacker, defender, profile) {
   } else {
     const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
     appendCombatLog(`${logPrefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
+    for (const sideEffect of applyAttackSideEffects(attacker, defender, result)) {
+      appendCombatLog(sideEffect);
+    }
     statusEl.textContent = `Combat View: Attack logged.${eliminatedText}`;
   }
 
@@ -2430,6 +2827,49 @@ function performPlayerAttack(attacker, defender, profile) {
     }
   }
 
+  updateControls();
+  draw();
+}
+
+function playerCallOfBravery() {
+  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
+    return;
+  }
+  const active = getActivePlayerUnit();
+  if (!active || !canUseCallOfBravery(active)) {
+    return;
+  }
+
+  applyCallOfBravery(active);
+  clearTargetingMode();
+  appendCombatLog(`${unitName(active)} uses Call of Bravery.`);
+  statusEl.textContent = "Combat View: Call of Bravery inspired the stack.";
+  updateControls();
+  draw();
+}
+
+function playerFireball() {
+  if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
+    return;
+  }
+  const active = getActivePlayerUnit();
+  if (!active || !hasAbility(active, "fireball")) {
+    return;
+  }
+
+  const result = useFireball(active);
+  if (!result.ok) {
+    statusEl.textContent = "Combat View: No valid Fireball target in range.";
+    updateControls();
+    return;
+  }
+
+  clearTargetingMode();
+  for (const entry of result.logEntries) {
+    appendCombatLog(entry);
+  }
+  statusEl.textContent = `Combat View: Fireball detonated at (${result.target.x}, ${result.target.y}).`;
+  checkCombatEnd();
   updateControls();
   draw();
 }
@@ -2514,11 +2954,36 @@ function enemyCombatTurn() {
   }
 
   clearTargetingMode();
-  resetCombatMp("enemy");
+  if (!beginCombatTurn("enemy")) {
+    return;
+  }
   const enemyUnits = [...getAliveUnits("enemy")];
 
   for (const unit of enemyUnits) {
     if (!unit.alive || state.gameOver) continue;
+
+    if (canUseCallOfBravery(unit)) {
+      applyCallOfBravery(unit);
+      appendCombatLog(`${unitName(unit)} uses Call of Bravery.`);
+      statusEl.textContent = "Combat View: Enemy battle cry echoes across the field.";
+      continue;
+    }
+
+    if (hasAbility(unit, "fireball")) {
+      const fireballResult = useFireball(unit);
+      if (fireballResult.ok) {
+        for (const entry of fireballResult.logEntries) {
+          appendCombatLog(entry);
+        }
+        statusEl.textContent = "Combat View: Enemy fireball resolved.";
+        if (checkCombatEnd()) {
+          updateControls();
+          draw();
+          return;
+        }
+        continue;
+      }
+    }
 
     while (unit.currentCombatMp > 0) {
       const targets = getAttackCandidates(unit, "player");
@@ -2532,6 +2997,9 @@ function enemyCombatTurn() {
           statusEl.textContent = "Combat View: Enemy attack logged.";
         } else {
           appendCombatLog(`${logPrefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
+          for (const sideEffect of applyAttackSideEffects(unit, defender, result)) {
+            appendCombatLog(sideEffect);
+          }
           statusEl.textContent = "Combat View: Enemy attack logged.";
         }
 
@@ -2554,14 +3022,15 @@ function enemyCombatTurn() {
         if (isOccupied(option.x, option.y, unit.id)) continue;
 
         const terrainRule = getCombatTerrainRule(getCombatTerrainAt(option.x, option.y));
-        if (!terrainRule.passable || terrainRule.cost > unit.currentCombatMp) {
+        const moveCost = getCombatMoveCost(unit, getCombatTerrainAt(option.x, option.y));
+        if (!terrainRule.passable || moveCost > unit.currentCombatMp) {
           continue;
         }
 
         unit.x = option.x;
         unit.y = option.y;
-        unit.currentCombatMp -= terrainRule.cost;
-        unit.combatMoveSpentThisTurn = (unit.combatMoveSpentThisTurn || 0) + terrainRule.cost;
+        unit.currentCombatMp -= moveCost;
+        unit.combatMoveSpentThisTurn = (unit.combatMoveSpentThisTurn || 0) + moveCost;
         moved = true;
         break;
       }
@@ -2578,8 +3047,9 @@ function enemyCombatTurn() {
     return;
   }
 
-  state.combatTurn = "player";
-  resetCombatMp("player");
+  if (!beginCombatTurn("player")) {
+    return;
+  }
   const first = getAliveUnits("player")[0];
   state.combat.activePlayerUnitId = first ? first.id : null;
   statusEl.textContent = "Combat View: Your combat turn. Use A to cycle units.";
@@ -2861,7 +3331,7 @@ function buildMapStackTooltipHtml(side) {
   const lines = units
     .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${formatUnitCombatEffectsHtml(unit)}`)
     .join("");
-  return `<strong>${stack.race} Stack (${units.length} units)</strong>${lines}`;
+  return `<strong>${stack.race} Stack (${units.length}/${getStackCapacity(units)} units)</strong>${lines}`;
 }
 
 function buildCombatUnitTooltipHtml(side, unit) {
@@ -2974,6 +3444,7 @@ function renderGameToText() {
       player: {
         race: state.stacks.player.race,
         count: getStackCount("player"),
+        capacity: getStackCapacity(getAliveUnits("player")),
         mapPos: { x: state.stacks.player.x, y: state.stacks.player.y },
         mapMp: state.stacks.player.currentMapMp,
         token: state.stacks.player.token,
@@ -2985,6 +3456,7 @@ function renderGameToText() {
           unitClass: unit.unitClass || null,
           loadout: unit.loadout || null,
           abilities: [...(unit.abilities || [])],
+          statuses: [...(unit.statuses || [])],
           hp: unit.hp,
           maxHp: unit.maxHp,
           armor: unit.armor,
@@ -3001,6 +3473,7 @@ function renderGameToText() {
       enemy: {
         race: state.stacks.enemy.race,
         count: getStackCount("enemy"),
+        capacity: getStackCapacity(getAliveUnits("enemy")),
         mapPos: enemyVisible || state.mode !== "map"
           ? { x: state.stacks.enemy.x, y: state.stacks.enemy.y }
           : null,
@@ -3014,6 +3487,7 @@ function renderGameToText() {
           unitClass: unit.unitClass || null,
           loadout: unit.loadout || null,
           abilities: [...(unit.abilities || [])],
+          statuses: [...(unit.statuses || [])],
           hp: unit.hp,
           maxHp: unit.maxHp,
           armor: unit.armor,
@@ -3051,6 +3525,7 @@ function renderGameToText() {
             unitClass: unit.unitClass || null,
             loadout: unit.loadout || null,
             abilities: [...(unit.abilities || [])],
+            statuses: [...(unit.statuses || [])],
             side,
             x: unit.x,
             y: unit.y,
@@ -3131,7 +3606,7 @@ function resetGame() {
   clearCombatLog();
   state = initialState();
   updateRaceLabels();
-  statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Stack sizes are random (1-8): ${state.stacks.player.token}${toSubscript(getStackCount("player"))} vs ${state.stacks.enemy.token}${toSubscript(getStackCount("enemy"))}.`;
+  statusEl.textContent = `Map View: Random start positions + fog of war (vision radius ${state.fog.player.radius}). Base stack sizes are random (1-${BASE_STACK_CAPACITY}): ${state.stacks.player.token}${toSubscript(getStackCount("player"))} vs ${state.stacks.enemy.token}${toSubscript(getStackCount("enemy"))}.`;
   updateControls();
   draw();
 }
@@ -3149,6 +3624,16 @@ document.addEventListener("keydown", (event) => {
   if (event.code === "Space") {
     event.preventDefault();
     playerCombatAttack();
+    return;
+  }
+
+  if (event.code === "KeyC") {
+    playerCallOfBravery();
+    return;
+  }
+
+  if (event.code === "KeyG") {
+    playerFireball();
     return;
   }
 
@@ -3176,6 +3661,8 @@ document.addEventListener("keydown", (event) => {
 });
 
 attackBtn.addEventListener("click", playerCombatAttack);
+if (braveryBtn) braveryBtn.addEventListener("click", playerCallOfBravery);
+if (fireballBtn) fireballBtn.addEventListener("click", playerFireball);
 endTurnBtn.addEventListener("click", endTurn);
 resetBtn.addEventListener("click", resetGame);
 playerRaceSelectEl.addEventListener("change", updateSetupRacePreviews);
