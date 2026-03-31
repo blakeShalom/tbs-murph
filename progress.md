@@ -311,3 +311,35 @@ Validation for ability-system pass:
   - Explicit `Centaur Clans` vs `Demon Horde` setup confirmed Centaur capacity growth (`10/10` in sampled run) and live archetype/ability payloads in `render_game_to_text`.
 - Browser console note:
   - observed setup-page console error is the existing `favicon.ico` `404`; no new gameplay/runtime error artifacts were produced by the validation runs.
+
+- Added demon advanced trait pass in the live runtime and pure rule layer.
+  - `Basking` added to `Hell Hound`, `Incubus`, and `Arch Fiend`.
+    - These units now also carry `Fire Immunity`.
+    - In the live runtime, direct `Fireball` hits heal them for half of raw damage instead of harming them.
+  - `Flying` added to `Succubus`.
+    - Adjacent/direct melee attacks can no longer target flying units unless they are grounded by a future debuff.
+    - Ranged attacks remain valid.
+  - `Flammable` added to `Imp`.
+    - A successful `Fire Strike` proc now kindles the Imp for `3` turns instead of applying normal burning.
+    - While kindled, the Imp gains `+2 DMG` and temporary `Fire Strike`.
+    - If the kindled Imp dies, it explodes into an adjacent-tile fire burst using medium fire values (`ATK 10`, `DMG 8`).
+
+- Expanded pure-rule coverage in `src/systems/attackProfiles.js` and `tests/attack_profiles.test.js`.
+  - Added tests for:
+    - `Basking` fire-to-heal conversion and fire-immunity interaction
+    - `Flying` blocking melee while preserving ranged targeting
+    - `Flammable` temporary buff behavior and death-explosion profile
+
+Validation for advanced demon trait pass:
+- Unit tests: `npm test` passing (`63/63`).
+- Required skill Playwright client run:
+  - `output/web-game/basking-flying-flammable-validation/shot-0.png`
+  - `output/web-game/basking-flying-flammable-validation/state-0.json`
+  - Combat loaded successfully and exported no `null` combat coordinates.
+- Focused Playwright setup validation:
+  - Explicit `Centaur Clans` vs `Demon Horde` setup confirmed live browser state now surfaces:
+    - `Succubus`: `flying`
+    - `Hell Hound` / `Incubus`: `basking`, `fire-immunity`
+    - `Imp`: `flammable`
+- Browser console note remains unchanged:
+  - the only observed page error is the existing `favicon.ico` `404`.

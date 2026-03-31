@@ -9,9 +9,14 @@ export const FIRE_STRIKE_BASE_IGNITE_CHANCE = 50;
 export const FIRE_STRIKE_ATTACK_VALUE = 10;
 export const FIREBALL_RANGE = 2;
 export const FIREBALL_RADIUS = 1;
+export const MEDIUM_FIRE_ATTACK_VALUE = 10;
+export const MEDIUM_FIRE_DAMAGE_VALUE = 8;
 export const BURNING_TURNS = 3;
 export const BURNING_DAMAGE_PER_TURN = 2;
 export const CALL_OF_BRAVERY_TURNS = 3;
+export const FLAMMABLE_TURNS = 3;
+export const FLAMMABLE_DAMAGE_BONUS = 2;
+export const FLAMMABLE_DEATH_EXPLOSION_RADIUS = 1;
 
 export function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -22,7 +27,35 @@ export function manhattan(a, b) {
 }
 
 export function adjacentTargets(attacker, defenders) {
-  return defenders.filter((unit) => manhattan(attacker, unit) === 1);
+  return defenders.filter((unit) => manhattan(attacker, unit) === 1 && !isFlying(unit));
+}
+
+export function getStatus(unit, statusId) {
+  return (unit?.statuses || []).find((status) => status.id === statusId) || null;
+}
+
+export function hasStatus(unit, statusId) {
+  return Boolean(getStatus(unit, statusId));
+}
+
+export function hasBasking(unit) {
+  return hasAbility(unit, "basking");
+}
+
+export function hasFlying(unit) {
+  return hasAbility(unit, "flying");
+}
+
+export function hasFlammable(unit) {
+  return hasAbility(unit, "flammable");
+}
+
+export function isGrounded(unit) {
+  return hasStatus(unit, "grounded") || hasAbility(unit, "grounded");
+}
+
+export function isFlying(unit) {
+  return hasFlying(unit) && !isGrounded(unit);
 }
 
 export function sumAbilityCount(units, abilityId) {
@@ -83,6 +116,28 @@ export function getCombatMovementCost(terrainType, unit = null) {
   return baseCost;
 }
 
+export function getStatusBonus(unit, stat) {
+  let bonus = 0;
+  for (const status of unit?.statuses || []) {
+    if (status.id === "flammable" && stat === "damage") {
+      bonus += Number(status.data?.damageBonus) || 0;
+    }
+  }
+  return bonus;
+}
+
+export function getEffectiveAttack(unit) {
+  return (Number(unit?.attack) || 0) + getStatusBonus(unit, "attack");
+}
+
+export function getEffectiveDamage(unit) {
+  return (Number(unit?.damage) || 0) + getStatusBonus(unit, "damage");
+}
+
+export function getEffectiveEvasiveness(unit) {
+  return (Number(unit?.evasiveness) || 0) + getStatusBonus(unit, "evasiveness");
+}
+
 export function createTimedStatus({
   id,
   sourceUnitId = null,
@@ -118,6 +173,25 @@ export function createCallOfBraveryStatus(sourceUnitId, targetSide = null) {
       attack: 1,
       damage: 1,
       evasiveness: 1
+    }
+  });
+}
+
+export function createFlammableStatus(sourceUnitId, targetSide = null) {
+  return createTimedStatus({
+    id: "flammable",
+    sourceUnitId,
+    targetSide,
+    turnsRemaining: FLAMMABLE_TURNS,
+    data: {
+      damageBonus: FLAMMABLE_DAMAGE_BONUS,
+      grantsFireStrike: true,
+      deathExplosion: {
+        attack: MEDIUM_FIRE_ATTACK_VALUE,
+        damage: MEDIUM_FIRE_DAMAGE_VALUE,
+        radius: FLAMMABLE_DEATH_EXPLOSION_RADIUS,
+        friendlyFire: true
+      }
     }
   });
 }
@@ -175,7 +249,7 @@ export function getCallOfBraveryBonusForUnit(unit, statuses = []) {
 }
 
 export function hasFireStrikeAbility(unit) {
-  return hasAbility(unit, "fire-strike");
+  return hasAbility(unit, "fire-strike") || hasStatus(unit, "flammable");
 }
 
 export function hasFireProtection(unit) {
@@ -183,7 +257,7 @@ export function hasFireProtection(unit) {
 }
 
 export function hasFireImmunity(unit) {
-  return hasAbility(unit, "fire-immunity");
+  return hasAbility(unit, "fire-immunity") || hasBasking(unit);
 }
 
 export function getFireStrikeAttackValue() {
@@ -213,6 +287,39 @@ export function getBurningDamagePerTurn(defender) {
   return BURNING_DAMAGE_PER_TURN;
 }
 
+export function resolveDirectFireImpact(defender, rawDamage) {
+  const damageValue = Math.max(0, Number(rawDamage) || 0);
+
+  if (hasBasking(defender)) {
+    const healed = Math.floor(damageValue / 2);
+    return {
+      damage: 0,
+      healed,
+      hpDelta: healed,
+      fireImmunity: true,
+      basking: true
+    };
+  }
+
+  if (hasFireImmunity(defender)) {
+    return {
+      damage: 0,
+      healed: 0,
+      hpDelta: 0,
+      fireImmunity: true,
+      basking: false
+    };
+  }
+
+  return {
+    damage: damageValue,
+    healed: 0,
+    hpDelta: -damageValue,
+    fireImmunity: false,
+    basking: false
+  };
+}
+
 export function createBurningStatus(sourceUnitId, targetSide = null, defender = null) {
   return createTimedStatus({
     id: "burning",
@@ -229,6 +336,20 @@ export function resolveFireStrike(attacker, defender, options = {}) {
   const chance = getFireStrikeIgniteChance(defender, options);
   const roll = typeof options.roll === "number" ? options.roll : Math.random();
   const ignited = roll < chance / 100;
+  const sourceUnitId = attacker?.id ?? null;
+
+  if (ignited && hasFlammable(defender)) {
+    return {
+      attackValue: Number(options.attackValue ?? FIRE_STRIKE_ATTACK_VALUE),
+      chance,
+      roll,
+      ignited: true,
+      blockedByImmunity: hasFireImmunity(defender),
+      burnDamagePerTurn: 0,
+      burningStatus: null,
+      flammableStatus: createFlammableStatus(sourceUnitId, defender?.side ?? null)
+    };
+  }
 
   return {
     attackValue: Number(options.attackValue ?? FIRE_STRIKE_ATTACK_VALUE),
@@ -238,8 +359,9 @@ export function resolveFireStrike(attacker, defender, options = {}) {
     blockedByImmunity: hasFireImmunity(defender),
     burnDamagePerTurn: getBurningDamagePerTurn(defender),
     burningStatus: ignited
-      ? createBurningStatus(attacker?.id ?? null, defender?.side ?? null, defender)
-      : null
+      ? createBurningStatus(sourceUnitId, defender?.side ?? null, defender)
+      : null,
+    flammableStatus: null
   };
 }
 
@@ -261,6 +383,46 @@ export function getSquareAreaTiles(center, radius = FIREBALL_RADIUS, boardSize =
     }
   }
   return tiles;
+}
+
+export function getAdjacentAreaTiles(center, boardSize = 8) {
+  const tiles = [];
+  const candidates = [
+    { x: center.x + 1, y: center.y },
+    { x: center.x - 1, y: center.y },
+    { x: center.x, y: center.y + 1 },
+    { x: center.x, y: center.y - 1 }
+  ];
+
+  for (const tile of candidates) {
+    if (tile.x >= 0 && tile.y >= 0 && tile.x < boardSize && tile.y < boardSize) {
+      tiles.push(tile);
+    }
+  }
+
+  return tiles;
+}
+
+export function getFlammableDeathExplosionProfile() {
+  return {
+    id: "flammable-death-explosion",
+    label: "death explosion",
+    attack: MEDIUM_FIRE_ATTACK_VALUE,
+    damage: MEDIUM_FIRE_DAMAGE_VALUE,
+    range: FLAMMABLE_DEATH_EXPLOSION_RADIUS,
+    targeting: "adjacent",
+    friendlyFire: true
+  };
+}
+
+export function getFlammableDeathExplosionTargets(center, units = [], boardSize = 8) {
+  const areaTiles = getAdjacentAreaTiles(center, boardSize);
+  const areaSet = new Set(areaTiles.map((tile) => `${tile.x},${tile.y}`));
+
+  return {
+    areaTiles,
+    affectedUnits: (units || []).filter((unit) => areaSet.has(`${unit.x},${unit.y}`))
+  };
 }
 
 export function getFireballAreaTiles(center, boardSize = 8) {
@@ -313,8 +475,8 @@ export function getMeleeProfile(attacker) {
   return applyAttackModifiers(attacker, {
     id: "melee",
     label: "melee",
-    attack: attacker.attack,
-    damage: attacker.damage,
+    attack: getEffectiveAttack(attacker),
+    damage: getEffectiveDamage(attacker),
     range: 1,
     targeting: "adjacent",
     priority: 0
@@ -332,8 +494,8 @@ export function getArcheryProfile(attacker) {
   return applyAttackModifiers(attacker, {
     id: "archery",
     label: "shot",
-    attack: Math.max(1, attacker.attack - 2 + marksmanshipBonus),
-    damage: Math.max(1, attacker.damage - 2 + marksmanshipBonus),
+    attack: Math.max(1, getEffectiveAttack(attacker) - 2 + marksmanshipBonus),
+    damage: Math.max(1, getEffectiveDamage(attacker) - 2 + marksmanshipBonus),
     range: 2 + rangeBonus,
     targeting: "orthogonal-line",
     priority: 1
@@ -363,7 +525,11 @@ export function isClearOrthogonalShot(attacker, defender, occupiedPositions = []
 }
 
 export function getRangedTargets(attacker, defenders, occupiedPositions = []) {
-  if (adjacentTargets(attacker, defenders).length > 0) {
+  const groundedAdjacentTargets = defenders.filter(
+    (unit) => manhattan(attacker, unit) === 1 && !isFlying(unit)
+  );
+
+  if (groundedAdjacentTargets.length > 0) {
     return [];
   }
 
@@ -374,7 +540,10 @@ export function getRangedTargets(attacker, defenders, occupiedPositions = []) {
 
   return defenders.filter((unit) => {
     const distance = manhattan(attacker, unit);
-    if (distance <= 1 || distance > archery.range) {
+    if (distance > archery.range) {
+      return false;
+    }
+    if (!isFlying(unit) && distance <= 1) {
       return false;
     }
     return isClearOrthogonalShot(attacker, unit, occupiedPositions);

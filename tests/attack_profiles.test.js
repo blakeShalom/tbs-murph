@@ -8,12 +8,16 @@ import {
   CALL_OF_BRAVERY_TURNS,
   createBurningStatus,
   createCallOfBraveryStatus,
+  createFlammableStatus,
   getChargeThreshold,
   getArcheryProfile,
   getAttackCandidates,
   getAvailableAttackProfiles,
   getBurningDamagePerTurn,
   getCombatMovementCost,
+  getEffectiveDamage,
+  getFlammableDeathExplosionProfile,
+  getFlammableDeathExplosionTargets,
   getFireballAffectedUnits,
   getFireballAreaTiles,
   getFireStrikeIgniteChance,
@@ -23,8 +27,10 @@ import {
   getMapMovementCost,
   getRangedTargets,
   getStackCapacityLimit,
+  hasFireStrikeAbility,
   isChargeActive,
   isClearOrthogonalShot,
+  resolveDirectFireImpact,
   resolveFireStrike,
   tickTimedStatuses
 } from "../src/systems/attackProfiles.js";
@@ -40,6 +46,9 @@ function makeUnit(overrides = {}) {
     combatMoveSpentThisTurn: 0,
     currentCombatMp: 1,
     side: "player",
+    hp: 20,
+    maxHp: 20,
+    statuses: [],
     abilities: [],
     ...overrides
   };
@@ -194,6 +203,74 @@ test("fire strike ignition is 50 percent on evenly matched units and respects pr
   assert.equal(getBurningDamagePerTurn(immuneDefender), 0);
   assert.equal(attacker.abilities.includes("fire-strike"), true);
   assert.equal(resolveFireStrike(attacker, immuneDefender, { roll: 0.0 }).blockedByImmunity, true);
+});
+
+test("basking converts direct fire into healing and counts as fire immunity", () => {
+  const defender = makeUnit({ hp: 12, maxHp: 20, abilities: ["basking"] });
+
+  const result = resolveDirectFireImpact(defender, 9);
+
+  assert.equal(result.fireImmunity, true);
+  assert.equal(result.basking, true);
+  assert.equal(result.healed, 4);
+  assert.equal(result.hpDelta, 4);
+  assert.equal(getFireStrikeIgniteChance(defender, { attackValue: 10 }), 0);
+  assert.equal(getBurningDamagePerTurn(defender), 0);
+});
+
+test("flying units cannot be struck by adjacent melee but remain ranged targets", () => {
+  const attacker = makeUnit({ abilities: ["archery"] });
+  const flyingEnemy = makeUnit({ id: "E1", x: 1, y: 2, abilities: ["flying"] });
+  const groundedEnemy = makeUnit({ id: "E2", x: 1, y: 3 });
+
+  const candidates = getAttackCandidates(attacker, [flyingEnemy, groundedEnemy]);
+
+  assert.deepEqual(
+    candidates.map((candidate) => `${candidate.unit.id}:${candidate.profile.id}`),
+    ["E1:archery", "E2:archery"]
+  );
+  assert.equal(getAvailableAttackProfiles(attacker, [flyingEnemy]).map((profile) => profile.id).includes("melee"), true);
+  assert.deepEqual(getRangedTargets(attacker, [flyingEnemy]).map((unit) => unit.id), ["E1"]);
+});
+
+test("flammable creates a timed buff that grants fire strike and +2 damage", () => {
+  const imp = makeUnit({ id: "I1", abilities: ["flammable"], statuses: [] });
+  const result = resolveFireStrike(makeUnit({ id: "A1", abilities: ["fire-strike"] }), imp, { roll: 0.0 });
+  const previewStatus = createFlammableStatus("I1", "enemy");
+
+  assert.equal(result.ignited, true);
+  assert.equal(result.burningStatus, null);
+  assert.equal(result.flammableStatus.id, "flammable");
+  assert.equal(result.flammableStatus.turnsRemaining, 3);
+  assert.equal(result.flammableStatus.data.damageBonus, 2);
+  assert.equal(result.flammableStatus.data.grantsFireStrike, true);
+  assert.equal(previewStatus.turnsRemaining, 3);
+  assert.equal(hasFireStrikeAbility(makeUnit({ statuses: [result.flammableStatus] })), true);
+  assert.equal(getEffectiveDamage(makeUnit({ damage: 8, statuses: [result.flammableStatus] })), 10);
+});
+
+test("flammable death explosion uses adjacent tiles and medium fire values", () => {
+  const profile = getFlammableDeathExplosionProfile();
+  const affected = getFlammableDeathExplosionTargets(
+    { x: 3, y: 3 },
+    [
+      { id: "A", x: 2, y: 3 },
+      { id: "B", x: 4, y: 3 },
+      { id: "C", x: 3, y: 2 },
+      { id: "D", x: 3, y: 4 },
+      { id: "E", x: 2, y: 2 }
+    ],
+    8
+  );
+
+  assert.equal(profile.attack, 10);
+  assert.equal(profile.damage, 8);
+  assert.equal(profile.range, 1);
+  assert.equal(profile.friendlyFire, true);
+  assert.deepEqual(
+    affected.affectedUnits.map((unit) => unit.id).sort(),
+    ["A", "B", "C", "D"]
+  );
 });
 
 test("burning status lasts three turns and carries the resolved damage per turn", () => {

@@ -15,6 +15,10 @@ const FIRE_STRIKE_BASE_TICK = 2;
 const FIREBALL_ATTACK = 10;
 const FIREBALL_DAMAGE = 8;
 const FIREBALL_RANGE = 2;
+const FLAMMABLE_DAMAGE_BONUS = 2;
+const FLAMMABLE_DURATION = 3;
+const FLAMMABLE_BURST_ATTACK = 10;
+const FLAMMABLE_BURST_DAMAGE = 8;
 const RACE_PREVIEW_WIDTH = 300;
 const RACE_PREVIEW_HEIGHT = 170;
 const MAP_ART_SIZE = 64;
@@ -104,7 +108,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Hooves + Wings + Horns",
     coatColor: "#7c5742",
     stats: { hp: 16, attack: 10, damage: 6, armor: 2, evasiveness: 12, combatMp: 3 },
-    abilities: ["fire-protection"]
+    abilities: ["fire-protection", "flammable"]
   },
   {
     id: "gog",
@@ -120,7 +124,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Cerberus-like Demon Dog",
     coatColor: "#59352a",
     stats: { hp: 24, attack: 15, damage: 13, armor: 6, evasiveness: 10, combatMp: 4 },
-    abilities: ["charge", "fire-strike", "fire-protection"]
+    abilities: ["charge", "fire-strike", "fire-protection", "fire-immunity", "basking"]
   },
   {
     id: "succubus",
@@ -128,7 +132,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Winged Demon",
     coatColor: "#8f4b59",
     stats: { hp: 19, attack: 14, damage: 10, armor: 4, evasiveness: 15, combatMp: 3 },
-    abilities: ["fire-strike", "fire-protection"]
+    abilities: ["fire-strike", "fire-protection", "flying"]
   },
   {
     id: "incubus",
@@ -136,7 +140,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Fire Djinni Demon",
     coatColor: "#9a5137",
     stats: { hp: 23, attack: 16, damage: 14, armor: 8, evasiveness: 11, combatMp: 3 },
-    abilities: ["fire-strike", "fire-immunity"]
+    abilities: ["fire-strike", "fire-immunity", "basking"]
   },
   {
     id: "arch-fiend",
@@ -144,7 +148,7 @@ const DEMON_UNIT_ARCHETYPES = [
     loadout: "Battle Axe + Claws + Black Plate",
     coatColor: "#aa2f23",
     stats: { hp: 29, attack: 18, damage: 17, armor: 16, evasiveness: 7, combatMp: 2 },
-    abilities: ["fire-strike", "fire-protection"]
+    abilities: ["fire-strike", "fire-protection", "fire-immunity", "basking"]
   }
 ];
 
@@ -1720,6 +1724,9 @@ function getStatusBonus(unit, stat) {
         bonus += 1;
       }
     }
+    if (status.id === "flammable-buff" && stat === "damage") {
+      bonus += FLAMMABLE_DAMAGE_BONUS;
+    }
   }
   return bonus;
 }
@@ -1734,6 +1741,22 @@ function getEffectiveDamage(unit) {
 
 function getEffectiveEvasiveness(unit) {
   return unit.evasiveness + getStatusBonus(unit, "evasiveness");
+}
+
+function hasActiveFireStrike(unit) {
+  return hasAbility(unit, "fire-strike") || hasStatus(unit, "flammable-buff");
+}
+
+function isGrounded(unit) {
+  return hasStatus(unit, "grounded");
+}
+
+function isFlying(unit) {
+  return hasAbility(unit, "flying") && !isGrounded(unit);
+}
+
+function isDirectStrikeBlocked(attacker, defender, profile) {
+  return profile?.targeting === "adjacent" && isFlying(defender);
 }
 
 function getWorldMoveCost(stack, terrainType) {
@@ -1762,6 +1785,13 @@ function applyBurning(target) {
   if (hasAbility(target, "fire-immunity")) {
     return false;
   }
+  if (hasAbility(target, "flammable")) {
+    addOrRefreshStatus(target, {
+      id: "flammable-buff",
+      turnsRemaining: FLAMMABLE_DURATION
+    });
+    return true;
+  }
   addOrRefreshStatus(target, {
     id: "burning",
     turnsRemaining: FIRE_STRIKE_BASE_DURATION,
@@ -1771,40 +1801,52 @@ function applyBurning(target) {
 }
 
 function attemptFireStrike(attacker, defender) {
-  if (!hasAbility(attacker, "fire-strike") || !defender.alive) {
-    return { applied: false, chance: 0, roll: null };
+  if (!hasActiveFireStrike(attacker) || !defender.alive) {
+    return { applied: false, chance: 0, roll: null, effect: null };
   }
 
   const chance = getFireStrikeChance(attacker, defender);
   if (chance <= 0) {
-    return { applied: false, chance, roll: null };
+    return { applied: false, chance, roll: null, effect: hasAbility(defender, "fire-immunity") ? "immune" : null };
   }
 
   const roll = randomInt(1, 100);
   if (roll > chance) {
-    return { applied: false, chance, roll };
+    return { applied: false, chance, roll, effect: null };
   }
 
-  return { applied: applyBurning(defender), chance, roll };
+  return {
+    applied: applyBurning(defender),
+    chance,
+    roll,
+    effect: hasAbility(defender, "flammable") ? "flammable" : "burning"
+  };
 }
 
 function applyBurningTick(side) {
   let anyDeaths = false;
+  const logEntries = [];
 
   for (const unit of getAliveUnits(side)) {
-    const burning = getStatus(unit, "burning");
-    if (!burning) continue;
+    const flammable = getStatus(unit, "flammable-buff");
+    if (flammable) {
+      flammable.turnsRemaining -= 1;
+    }
 
-    unit.hp = Math.max(0, unit.hp - burning.tickDamage);
-    burning.turnsRemaining -= 1;
-    if (unit.hp <= 0) {
-      eliminateUnit(unit);
-      anyDeaths = true;
+    const burning = getStatus(unit, "burning");
+    if (burning) {
+      unit.hp = Math.max(0, unit.hp - burning.tickDamage);
+      burning.turnsRemaining -= 1;
+      if (unit.hp <= 0) {
+        const deathResult = handleUnitDeath(unit, { id: "burning", label: "burning" });
+        anyDeaths = true;
+        logEntries.push(...deathResult.logEntries);
+      }
     }
     removeExpiredStatuses(unit);
   }
 
-  return anyDeaths;
+  return { anyDeaths, logEntries };
 }
 
 function decrementTurnSwapStatuses() {
@@ -1891,6 +1933,18 @@ function getUnitAbilities(unit) {
     entries.push("Passive: Fire Immunity (cannot be burned)");
   }
 
+  if (hasAbility(unit, "basking")) {
+    entries.push("Passive: Basking (Fireball heals for half raw damage instead of harming)");
+  }
+
+  if (hasAbility(unit, "flying")) {
+    entries.push("Passive: Flying (melee units cannot strike this unit unless grounded)");
+  }
+
+  if (hasAbility(unit, "flammable")) {
+    entries.push(`Passive: Flammable (Fire Strike kindles for ${FLAMMABLE_DURATION} turns: +${FLAMMABLE_DAMAGE_BONUS} DMG, temporary Fire Strike, death burst)`);
+  }
+
   if (hasAbility(unit, "fireball")) {
     entries.push(`Active: Fireball (RNG ${FIREBALL_RANGE}, 3x3 splash, friendly fire, uses all MOV)`);
   }
@@ -1929,6 +1983,10 @@ function formatUnitCombatEffectsHtml(unit) {
   if (hasStatus(unit, "burning")) {
     const burning = getStatus(unit, "burning");
     lines.push(`Burning: ${burning.tickDamage} HP for ${burning.turnsRemaining} more turns`);
+  }
+  if (hasStatus(unit, "flammable-buff")) {
+    const flammable = getStatus(unit, "flammable-buff");
+    lines.push(`Kindled: +${FLAMMABLE_DAMAGE_BONUS} DMG, temporary Fire Strike (${flammable.turnsRemaining} turns left)`);
   }
 
   return lines.length > 0 ? `<div>${lines.join(" | ")}</div>` : "";
@@ -2214,6 +2272,9 @@ function getRangedTargets(attacker, defenderSide) {
     if (distance <= 1 || distance > archery.range) {
       return false;
     }
+    if (isDirectStrikeBlocked(attacker, unit, archery)) {
+      return false;
+    }
     return isClearOrthogonalShot(attacker, unit);
   });
 }
@@ -2230,7 +2291,7 @@ function getAvailableAttackProfiles(attacker, defenderSide) {
 
 function getTargetsForProfile(attacker, defenderSide, profile) {
   if (profile.targeting === "adjacent") {
-    return adjacentTargets(attacker, defenderSide);
+    return adjacentTargets(attacker, defenderSide).filter((unit) => !isDirectStrikeBlocked(attacker, unit, profile));
   }
 
   if (profile.targeting === "orthogonal-line") {
@@ -2326,6 +2387,61 @@ function eliminateUnit(unit) {
   unit.y = null;
 }
 
+function getOrthogonalAdjacentTiles(x, y) {
+  return [
+    { x: x + 1, y },
+    { x: x - 1, y },
+    { x, y: y + 1 },
+    { x, y: y - 1 }
+  ].filter((tile) => inBounds(tile.x, tile.y, COMBAT_GRID_SIZE));
+}
+
+function formatAttackResolutionLog(attacker, defender, result, prefix = `${unitName(attacker)} ${result.attackLabel} -> ${unitName(defender)}`) {
+  if (!result.hit) {
+    return `${prefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`;
+  }
+  if (result.convertedByBasking) {
+    return `${prefix}: hit (${result.hitRoll}/${result.hitChance}%), but ${unitName(defender)} basked and healed ${result.healing} HP.`;
+  }
+  return `${prefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`;
+}
+
+function handleUnitDeath(unit) {
+  const logEntries = [];
+  const origin = { x: unit.x, y: unit.y };
+  const deadLabel = unitName(unit);
+  const triggersBurst = hasStatus(unit, "flammable-buff") && origin.x != null && origin.y != null;
+
+  eliminateUnit(unit);
+
+  if (!triggersBurst) {
+    return { logEntries };
+  }
+
+  logEntries.push(`${deadLabel} erupts in a volatile fire burst.`);
+  const burstProfile = {
+    id: "flammable-burst",
+    label: "volatile burst",
+    attack: FLAMMABLE_BURST_ATTACK,
+    damage: FLAMMABLE_BURST_DAMAGE,
+    range: 1,
+    targeting: "adjacent",
+    priority: 0
+  };
+
+  for (const tile of getOrthogonalAdjacentTiles(origin.x, origin.y)) {
+    const entry = getCombatUnitAt(tile.x, tile.y);
+    if (!entry?.unit?.alive) {
+      continue;
+    }
+    const result = resolveAttack(unit.side, { ...unit, x: origin.x, y: origin.y }, entry.side, entry.unit, burstProfile);
+    logEntries.push(formatAttackResolutionLog(unit, entry.unit, result, `${deadLabel} burst -> ${unitName(entry.unit)}`));
+    logEntries.push(...(result.deathLogEntries || []));
+  }
+
+  return { logEntries };
+}
+
 function resolveAttack(attackerSide, attacker, defenderSide, defender, profile = getMeleeProfile(attacker)) {
   const hitChance = getHitChance(attacker, defender, profile.attack);
   const hitRoll = randomInt(1, 100);
@@ -2348,6 +2464,26 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender, profile =
   }
 
   const rawDamage = rollBiasedDamage(profile.damage);
+  if (profile.id === "fireball" && hasAbility(defender, "basking")) {
+    const healing = Math.floor(rawDamage / 2);
+    defender.hp = Math.min(defender.maxHp, defender.hp + healing);
+    return {
+      attackerSide,
+      defenderSide,
+      attackType: profile.id,
+      attackLabel: profile.label,
+      hitChance,
+      hitRoll,
+      hit: true,
+      rawDamage,
+      armorAbsorbed: 0,
+      hpDamage: 0,
+      healing,
+      convertedByBasking: true,
+      eliminated: null,
+      deathLogEntries: []
+    };
+  }
   const intendedArmorDamage = Math.floor(rawDamage * 0.8);
   const guaranteedHpDamage = rawDamage - intendedArmorDamage;
   const armorAbsorbed = Math.min(defender.armor, intendedArmorDamage);
@@ -2357,9 +2493,10 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender, profile =
   defender.hp = Math.max(0, defender.hp - hpDamage);
 
   let eliminated = null;
+  let deathLogEntries = [];
   if (defender.hp <= 0) {
     eliminated = unitName(defender);
-    eliminateUnit(defender);
+    deathLogEntries = handleUnitDeath(defender).logEntries;
   }
 
   return {
@@ -2373,16 +2510,25 @@ function resolveAttack(attackerSide, attacker, defenderSide, defender, profile =
     rawDamage,
     armorAbsorbed,
     hpDamage,
-    eliminated
+    convertedByBasking: false,
+    healing: 0,
+    eliminated,
+    deathLogEntries
   };
 }
 
 function formatFireStrikeLog(attacker, defender, fireResult) {
+  if (fireResult.effect === "immune") {
+    return `${unitName(attacker)} fire strike had no effect on ${unitName(defender)}.`;
+  }
   if (fireResult.roll == null) {
     return `${unitName(attacker)} fire strike had no effect on ${unitName(defender)}.`;
   }
   if (!fireResult.applied) {
     return `${unitName(attacker)} fire strike failed on ${unitName(defender)} (${fireResult.roll}/${fireResult.chance}%).`;
+  }
+  if (fireResult.effect === "flammable") {
+    return `${unitName(attacker)} kindled ${unitName(defender)} (${fireResult.roll}/${fireResult.chance}%).`;
   }
   return `${unitName(attacker)} ignited ${unitName(defender)} (${fireResult.roll}/${fireResult.chance}%).`;
 }
@@ -2459,14 +2605,11 @@ function useFireball(attacker) {
   for (const entry of selected.units) {
     if (!entry.unit.alive) continue;
     const result = resolveAttack(attacker.side, attacker, entry.side, entry.unit, profile);
-    if (!result.hit) {
-      logEntries.push(`${unitName(attacker)} fireball -> ${unitName(entry.unit)}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
-      continue;
-    }
-    logEntries.push(`${unitName(attacker)} fireball -> ${unitName(entry.unit)}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
+    logEntries.push(formatAttackResolutionLog(attacker, entry.unit, result, `${unitName(attacker)} fireball -> ${unitName(entry.unit)}`));
     for (const sideEffect of applyAttackSideEffects(attacker, entry.unit, result)) {
       logEntries.push(sideEffect);
     }
+    logEntries.push(...(result.deathLogEntries || []));
   }
 
   attacker.currentCombatMp = 0;
@@ -2496,9 +2639,12 @@ function resetCombatMp(side) {
 function beginCombatTurn(side) {
   state.combatTurn = side;
   decrementTurnSwapStatuses();
-  const burnDeaths = applyBurningTick(side);
-  if (burnDeaths) {
+  const statusTick = applyBurningTick(side);
+  if (statusTick.anyDeaths) {
     appendCombatLog(`${state.stacks[side].race} suffers burning damage at turn start.`);
+  }
+  for (const entry of statusTick.logEntries) {
+    appendCombatLog(entry);
   }
   if (checkCombatEnd()) {
     updateControls();
@@ -2806,17 +2952,15 @@ function performPlayerAttack(attacker, defender, profile) {
   clearTargetingMode();
 
   const logPrefix = `${unitName(attacker)} ${result.attackLabel} -> ${unitName(defender)}`;
-  if (!result.hit) {
-    appendCombatLog(`${logPrefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
-    statusEl.textContent = "Combat View: Attack logged.";
-  } else {
-    const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
-    appendCombatLog(`${logPrefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
-    for (const sideEffect of applyAttackSideEffects(attacker, defender, result)) {
-      appendCombatLog(sideEffect);
-    }
-    statusEl.textContent = `Combat View: Attack logged.${eliminatedText}`;
+  appendCombatLog(formatAttackResolutionLog(attacker, defender, result, logPrefix));
+  for (const sideEffect of applyAttackSideEffects(attacker, defender, result)) {
+    appendCombatLog(sideEffect);
   }
+  for (const entry of result.deathLogEntries || []) {
+    appendCombatLog(entry);
+  }
+  const eliminatedText = result.eliminated ? ` ${result.eliminated} was eliminated.` : "";
+  statusEl.textContent = `Combat View: Attack logged.${eliminatedText}`;
 
   if (!checkCombatEnd()) {
     const next = getActivePlayerUnit();
@@ -2992,16 +3136,14 @@ function enemyCombatTurn() {
         const result = resolveAttack("enemy", unit, "player", defender, profile);
         unit.currentCombatMp = 0;
         const logPrefix = `${unitName(unit)} ${result.attackLabel} -> ${unitName(defender)}`;
-        if (!result.hit) {
-          appendCombatLog(`${logPrefix}: miss (${result.hitRoll} vs ${result.hitChance}%).`);
-          statusEl.textContent = "Combat View: Enemy attack logged.";
-        } else {
-          appendCombatLog(`${logPrefix}: hit (${result.hitRoll}/${result.hitChance}%), raw ${result.rawDamage}, armor ${result.armorAbsorbed}, hp ${result.hpDamage}.${result.eliminated ? ` Eliminated ${result.eliminated}.` : ""}`);
-          for (const sideEffect of applyAttackSideEffects(unit, defender, result)) {
-            appendCombatLog(sideEffect);
-          }
-          statusEl.textContent = "Combat View: Enemy attack logged.";
+        appendCombatLog(formatAttackResolutionLog(unit, defender, result, logPrefix));
+        for (const sideEffect of applyAttackSideEffects(unit, defender, result)) {
+          appendCombatLog(sideEffect);
         }
+        for (const entry of result.deathLogEntries || []) {
+          appendCombatLog(entry);
+        }
+        statusEl.textContent = "Combat View: Enemy attack logged.";
 
         if (checkCombatEnd()) {
           updateControls();

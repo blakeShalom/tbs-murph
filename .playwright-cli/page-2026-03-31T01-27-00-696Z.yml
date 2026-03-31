@@ -1,0 +1,27 @@
+- main [ref=e2]:
+  - generic [ref=e19]:
+    - 'heading "4X Prototype: Turn-Based Skirmish" [level=1] [ref=e20]'
+    - generic [ref=e21]:
+      - paragraph [ref=e22]:
+        - strong [ref=e23]: "Race A:"
+        - text: Centaur Clans
+      - paragraph [ref=e24]:
+        - strong [ref=e25]: "Race B:"
+        - text: Demon Horde
+    - paragraph [ref=e26]:
+      - strong [ref=e27]: "View:"
+      - text: Map
+    - paragraph [ref=e28]:
+      - strong [ref=e29]: "Map MP:"
+      - text: 3/3
+    - paragraph [ref=e30]:
+      - strong [ref=e31]: "Combat MP:"
+      - text: 0/0
+    - paragraph [ref=e32]: "Map View: Random start positions + fog of war (vision radius 2). Base stack sizes are random (1-8): C₈ vs H₈."
+    - button "Attack" [disabled] [ref=e33]
+    - button "Bravery" [disabled] [ref=e34]
+    - button "Fireball" [disabled] [ref=e35]
+    - button "End Turn" [ref=e36] [cursor=pointer]
+    - button "Reset" [ref=e37] [cursor=pointer]
+    - paragraph [ref=e38]: "Hover stacks and units for stats, movement, abilities, and statuses. `Space` attacks, `C` uses Call of Bravery, `G` uses Fireball, `A` cycles units, and `Enter` ends turn. Some abilities consume all movement."
+  - generic "Game board" [ref=e18]
