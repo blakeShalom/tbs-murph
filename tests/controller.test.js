@@ -39,6 +39,7 @@ test("controller transitions to combat on map overlap", () => {
   game.move("ArrowRight");
 
   assert.equal(game.getState().mode, "combat");
+  assert.deepEqual(game.getState().combat.enemy, { x: 4, y: 4 });
   assert.equal(game.getState().combatTurn, "player");
 });
 

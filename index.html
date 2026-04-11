@@ -41,7 +41,19 @@
       <button id="fireballBtn">Fireball</button>
       <button id="endTurnBtn">End Turn</button>
       <button id="resetBtn">Reset</button>
-      <p class="hint">Hover stacks and units for stats, movement, abilities, and statuses. `Space` attacks, `C` uses Call of Bravery, `G` uses Fireball, `A` cycles units, and `Enter` ends turn. Some abilities consume all movement.</p>
+      <p class="hint">Controls: `Space` attack, `C` bravery, `G` fireball, `A` cycle unit, `Enter` end turn. Hover a unit for quick stats; see details below.</p>
+      <section class="battle-overview-panel" aria-live="polite">
+        <h3>Battle Overview</h3>
+        <div id="battleOverview" class="battle-overview-empty">Enter combat to see each unit's health and armor.</div>
+      </section>
+      <section class="enemy-turn-panel" aria-live="polite">
+        <h3>Last Enemy Turn</h3>
+        <div id="enemyTurnSummary" class="enemy-turn-empty">The enemy recap will appear here after its combat turn.</div>
+      </section>
+      <section class="unit-inspector-panel" aria-live="polite">
+        <h3>Unit Details</h3>
+        <div id="unitInspector" class="unit-inspector-empty">Hover a stack or unit to inspect it.</div>
+      </section>
       <section class="combat-log-panel">
         <h3>Combat Log</h3>
         <ul id="combatLog" class="combat-log-list"></ul>

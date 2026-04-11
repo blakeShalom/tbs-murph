@@ -10,7 +10,7 @@ import {
 
 test("combat movement rejects invalid direction", () => {
   const state = createInitialState();
-  startCombat(state, "player");
+  startCombat(state, "enemy");
 
   const result = moveCombatPlayer(state, "KeyQ");
   assert.equal(result.ok, false);
@@ -19,7 +19,7 @@ test("combat movement rejects invalid direction", () => {
 
 test("enemy combat action is none when not enemy turn", () => {
   const state = createInitialState();
-  startCombat(state, "player");
+  startCombat(state, "enemy");
 
   const action = moveEnemyInCombat(state);
   assert.equal(action.action, "none");
@@ -27,7 +27,7 @@ test("enemy combat action is none when not enemy turn", () => {
 
 test("enemy combat can hold when blocked by impassable terrain", () => {
   const state = createInitialState();
-  startCombat(state, "enemy");
+  startCombat(state, "player");
   state.combat.enemy = { x: 1, y: 1 };
   state.combat.player = { x: 1, y: 3 };
   state.units.enemy.currentCombatMp = 1;
@@ -40,7 +40,7 @@ test("enemy combat can hold when blocked by impassable terrain", () => {
 
 test("enemy combat can move without attacking when still distant", () => {
   const state = createInitialState();
-  startCombat(state, "enemy");
+  startCombat(state, "player");
   state.combat.enemy = { x: 1, y: 1 };
   state.combat.player = { x: 1, y: 4 };
   state.units.enemy.currentCombatMp = 1;

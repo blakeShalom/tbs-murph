@@ -253,8 +253,11 @@ const startGameBtnEl = document.getElementById("startGameBtn");
 const hudPanelEl = document.getElementById("hudPanel");
 const boardWrapEl = document.getElementById("boardWrap");
 const unitTooltipEl = document.getElementById("unitTooltip");
+const unitInspectorEl = document.getElementById("unitInspector");
 const combatLogEl = document.getElementById("combatLog");
 const combatLogPanelEl = document.querySelector(".combat-log-panel");
+const battleOverviewEl = document.getElementById("battleOverview");
+const enemyTurnSummaryEl = document.getElementById("enemyTurnSummary");
 const statusEl = document.getElementById("status");
 const modeLabelEl = document.getElementById("modeLabel");
 const mapMpLabelEl = document.getElementById("mapMpLabel");
@@ -275,6 +278,8 @@ let selectedRaces = {
   enemy: RANDOM_RACE_ID
 };
 let hoveredEntity = null;
+let hoverClientX = null;
+let hoverClientY = null;
 const raceArtCache = new Map();
 const centaurCombatSpriteCache = new Map();
 const demonCombatSpriteCache = new Map();
@@ -1971,7 +1976,7 @@ function formatUnitLoadout(unit) {
   return unit.loadout ? `<div>${unit.loadout}</div>` : "";
 }
 
-function formatUnitCombatEffectsHtml(unit) {
+function getUnitCombatEffectEntries(unit) {
   const lines = [];
 
   if (isChargeActive(unit)) {
@@ -1989,7 +1994,195 @@ function formatUnitCombatEffectsHtml(unit) {
     lines.push(`Kindled: +${FLAMMABLE_DAMAGE_BONUS} DMG, temporary Fire Strike (${flammable.turnsRemaining} turns left)`);
   }
 
+  return lines;
+}
+
+function formatUnitCombatEffectsHtml(unit) {
+  const lines = getUnitCombatEffectEntries(unit);
   return lines.length > 0 ? `<div>${lines.join(" | ")}</div>` : "";
+}
+
+function setInspectorHtml(html) {
+  if (!unitInspectorEl) return;
+  if (!html) {
+    unitInspectorEl.className = "unit-inspector-empty";
+    unitInspectorEl.innerHTML = "Hover a stack or unit to inspect it.";
+    return;
+  }
+  unitInspectorEl.className = "unit-inspector-card";
+  unitInspectorEl.innerHTML = html;
+}
+
+function getAbilityBadgeLabels(unit) {
+  const labels = [];
+  if (hasAbility(unit, "archery")) labels.push("Archery");
+  if (hasAbility(unit, "marksmanship")) labels.push("Marksman");
+  if (hasAbility(unit, "charge")) labels.push("Charge");
+  if (hasAbility(unit, "leadership")) labels.push("Leader");
+  if (hasAbility(unit, "call-of-bravery")) labels.push("Bravery");
+  if (hasAbility(unit, "forestry")) labels.push("Forestry");
+  if (hasAbility(unit, "fire-strike")) labels.push("Fire Strike");
+  if (hasAbility(unit, "fire-protection")) labels.push("Fire Ward");
+  if (hasAbility(unit, "fire-immunity")) labels.push("Fire Immune");
+  if (hasAbility(unit, "basking")) labels.push("Basking");
+  if (hasAbility(unit, "flying")) labels.push("Flying");
+  if (hasAbility(unit, "flammable")) labels.push("Flammable");
+  if (hasAbility(unit, "fireball")) labels.push("Fireball");
+  return labels;
+}
+
+function getStatusBadgeLabels(unit) {
+  const labels = [];
+  if (isChargeActive(unit)) labels.push("Charge Primed");
+  if (hasStatus(unit, "call-of-bravery")) labels.push("Inspired");
+  if (hasStatus(unit, "burning")) labels.push("Burning");
+  if (hasStatus(unit, "flammable-buff")) labels.push("Kindled");
+  if (isGrounded(unit)) labels.push("Grounded");
+  return labels;
+}
+
+function buildBadgeRowHtml(labels, max = labels.length) {
+  const unique = [...new Set(labels)].slice(0, max);
+  if (unique.length === 0) {
+    return "";
+  }
+  return `<div class="badge-row">${unique.map((label) => `<span class="chip-badge">${label}</span>`).join("")}</div>`;
+}
+
+function formatCompactVitals(unit, includeCurrentMove = false) {
+  const moveText = includeCurrentMove
+    ? `${unit.currentCombatMp}/${unit.maxCombatMp}`
+    : `${unit.maxCombatMp}`;
+  return `HP ${unit.hp}/${unit.maxHp}  ARM ${unit.armor}/${unit.maxArmor}  MOV ${moveText}`;
+}
+
+function getCombatHitChanceEntries(side, unit) {
+  const active = side === "enemy" ? getActivePlayerUnit() : null;
+  if (!(state.mode === "combat" && active && side === "enemy")) {
+    return [];
+  }
+
+  const profiles = getAttackCandidates(active, "enemy")
+    .filter((candidate) => candidate.unit.id === unit.id)
+    .map((candidate) => candidate.profile);
+
+  const seen = new Set();
+  const lines = [];
+  for (const profile of profiles) {
+    if (seen.has(profile.id)) continue;
+    seen.add(profile.id);
+    const attackName = profile.id === "melee" ? "Melee" : profile.label;
+    lines.push(`${attackName}: ${getHitChance(active, unit, profile.attack)}% hit chance`);
+  }
+  return lines;
+}
+
+function buildInspectorStatGrid(unit, includeCurrentMove = false) {
+  const moveValue = includeCurrentMove
+    ? `${unit.currentCombatMp}/${unit.maxCombatMp}`
+    : `${unit.maxCombatMp}`;
+  const stats = [
+    ["HP", `${unit.hp}/${unit.maxHp}`],
+    ["ARM", `${unit.armor}/${unit.maxArmor}`],
+    ["ATK", `${getEffectiveAttack(unit)}`],
+    ["DMG", `${getEffectiveDamage(unit)}`],
+    ["EVA", `${getEffectiveEvasiveness(unit)}`],
+    ["MOV", moveValue]
+  ];
+  return `<div class="unit-inspector-stats">${stats
+    .map(
+      ([label, value]) =>
+        `<div class="unit-inspector-stat"><span class="unit-inspector-stat-label">${label}</span><span class="unit-inspector-stat-value">${value}</span></div>`
+    )
+    .join("")}</div>`;
+}
+
+function buildInspectorListSection(title, entries) {
+  if (!entries || entries.length === 0) {
+    return "";
+  }
+  return `<div class="unit-inspector-section"><div class="unit-inspector-section-title">${title}</div><ul class="unit-inspector-list">${entries
+    .map((entry) => `<li>${entry}</li>`)
+    .join("")}</ul></div>`;
+}
+
+function buildCompactMapStackTooltipHtml(side) {
+  const stack = state.stacks[side];
+  const units = getAliveUnits(side);
+  const badges = [
+    ...new Set(
+      units.flatMap((unit) => [...getStatusBadgeLabels(unit), ...getAbilityBadgeLabels(unit)])
+    )
+  ];
+  return `<strong>${stack.race} Stack</strong><div class="unit-tooltip-line">${units.length}/${getStackCapacity(units)} units</div>${buildBadgeRowHtml(badges, 3)}`;
+}
+
+function buildCompactCombatUnitTooltipHtml(side, unit) {
+  const badges = [...getStatusBadgeLabels(unit), ...getAbilityBadgeLabels(unit)];
+  return `<strong>${formatUnitIdentity(unit)}</strong><div class="unit-tooltip-line">${formatCompactVitals(unit, true)}</div>${buildBadgeRowHtml(badges, 3)}`;
+}
+
+function buildMapStackInspectorHtml(side, emphasizeHover = false) {
+  const stack = state.stacks[side];
+  const units = getAliveUnits(side);
+  const uniqueBadges = [
+    ...new Set(
+      units.flatMap((unit) => [...getStatusBadgeLabels(unit), ...getAbilityBadgeLabels(unit)])
+    )
+  ];
+  const capacity = getStackCapacity(units);
+  const unitsHtml = units
+    .map((unit) => {
+      const unitBadges = [...getStatusBadgeLabels(unit), ...getAbilityBadgeLabels(unit)];
+      const meta = [formatCompactVitals(unit, false), unit.loadout].filter(Boolean).join(" · ");
+      return `<div class="unit-inspector-unit-row"><strong>${formatUnitIdentity(unit)}</strong><div class="unit-inspector-unit-meta">${meta}</div>${buildBadgeRowHtml(
+        unitBadges,
+        4
+      )}</div>`;
+    })
+    .join("");
+
+  return `<div class="unit-inspector-kicker">${emphasizeHover ? "Hovered Stack" : "Stack Overview"}</div><h4 class="unit-inspector-title">${stack.race} Stack</h4><div class="unit-inspector-subtitle">${side === "player" ? "Player" : "Enemy"} side · ${units.length}/${capacity} units ready</div>${buildBadgeRowHtml(
+    uniqueBadges,
+    5
+  )}<div class="unit-inspector-note">This panel keeps the full stack breakdown off the board while you move and scout.</div><div class="unit-inspector-unit-list">${unitsHtml}</div>`;
+}
+
+function buildCombatUnitInspectorHtml(side, unit, emphasizeSelection = false) {
+  const loadoutSection = unit.loadout
+    ? `<div class="unit-inspector-section"><div class="unit-inspector-section-title">Loadout</div><div>${unit.loadout}</div></div>`
+    : "";
+  const abilityEntries = getUnitAbilities(unit);
+  const effectEntries = getUnitCombatEffectEntries(unit);
+  const hitChanceEntries = getCombatHitChanceEntries(side, unit);
+  const badges = [...getStatusBadgeLabels(unit), ...getAbilityBadgeLabels(unit)];
+  const kicker = emphasizeSelection
+    ? "Selected Unit"
+    : side === "player"
+      ? "Hovered Ally"
+      : "Hovered Target";
+  return `<div class="unit-inspector-kicker">${kicker}</div><h4 class="unit-inspector-title">${formatUnitIdentity(unit)}</h4><div class="unit-inspector-subtitle">${state.stacks[side].race} · ${side === "player" ? "Player" : "Enemy"} unit</div>${buildInspectorStatGrid(
+    unit,
+    true
+  )}${buildBadgeRowHtml(badges, 6)}${loadoutSection}${buildInspectorListSection("Abilities", abilityEntries)}${buildInspectorListSection(
+    "Status",
+    effectEntries
+  )}${buildInspectorListSection("Matchup", hitChanceEntries)}`;
+}
+
+function buildDefaultInspectorHtml() {
+  if (!gameStarted) {
+    return "";
+  }
+
+  if (state.mode === "combat") {
+    const active = getActivePlayerUnit();
+    if (active) {
+      return buildCombatUnitInspectorHtml("player", active, true);
+    }
+  }
+
+  return buildMapStackInspectorHtml("player");
 }
 
 function setTooltipHtml(html, x, y) {
@@ -2031,6 +2224,25 @@ function clearCombatLog() {
   }
 }
 
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function clearEnemyTurnSummary() {
+  if (state?.combat) {
+    state.combat.lastEnemyTurnEntries = [];
+  }
+  if (enemyTurnSummaryEl) {
+    enemyTurnSummaryEl.className = "enemy-turn-empty";
+    enemyTurnSummaryEl.textContent = "The enemy recap will appear here after its combat turn.";
+  }
+}
+
 function appendCombatLog(entry) {
   if (state?.combat) {
     if (!Array.isArray(state.combat.log)) {
@@ -2053,8 +2265,91 @@ function appendCombatLog(entry) {
   combatLogEl.scrollTop = combatLogEl.scrollHeight;
 }
 
+function appendEnemyTurnEntry(entry) {
+  appendCombatLog(entry);
+  if (state?.combat) {
+    if (!Array.isArray(state.combat.lastEnemyTurnEntries)) {
+      state.combat.lastEnemyTurnEntries = [];
+    }
+    state.combat.lastEnemyTurnEntries.push(entry);
+  }
+}
+
+function renderEnemyTurnSummary() {
+  if (!enemyTurnSummaryEl) return;
+
+  if (state.mode !== "combat") {
+    enemyTurnSummaryEl.className = "enemy-turn-empty";
+    enemyTurnSummaryEl.textContent = "The enemy recap will appear here after its combat turn.";
+    return;
+  }
+
+  const entries = state.combat?.lastEnemyTurnEntries || [];
+  if (entries.length === 0) {
+    enemyTurnSummaryEl.className = "enemy-turn-empty";
+    enemyTurnSummaryEl.textContent = "No enemy turn has been recorded yet in this battle.";
+    return;
+  }
+
+  enemyTurnSummaryEl.className = "";
+  enemyTurnSummaryEl.innerHTML = `<p class="enemy-turn-caption">Review the enemy's last full combat turn before choosing your next move.</p><ol class="enemy-turn-list">${entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ol>`;
+}
+
+function renderBattleOverview() {
+  if (!battleOverviewEl) return;
+
+  if (state.mode !== "combat" || !state.combat) {
+    battleOverviewEl.className = "battle-overview-empty";
+    battleOverviewEl.textContent = "Enter combat to see each unit's health and armor.";
+    return;
+  }
+
+  const activeId = state.combat.activePlayerUnitId;
+  const sideCards = ["player", "enemy"].map((side) => {
+    const units = getAliveUnits(side);
+    const stack = state.stacks[side];
+    return `<section class="battle-overview-side is-${side}">
+      <div class="battle-overview-side-header">
+        <span class="battle-overview-side-title">${escapeHtml(stack.race)}</span>
+        <span class="battle-overview-side-count">${units.length} unit${units.length === 1 ? "" : "s"} alive</span>
+      </div>
+      <div class="battle-overview-unit-list">
+        ${units.map((unit) => {
+          const hpPercent = Math.max(0, Math.min(100, Math.round((unit.hp / Math.max(1, unit.maxHp)) * 100)));
+          const activeTag = side === "player" && unit.id === activeId ? `<span class="battle-overview-unit-tag">Active</span>` : "";
+          return `<article class="battle-overview-unit${side === "player" && unit.id === activeId ? " is-active" : ""}">
+            <div class="battle-overview-unit-header">
+              <span class="battle-overview-unit-name">${escapeHtml(unitName(unit))}</span>
+              ${activeTag}
+            </div>
+            <div class="battle-overview-bar" role="img" aria-label="${escapeHtml(unitName(unit))} health ${unit.hp} out of ${unit.maxHp}">
+              <div class="battle-overview-bar-fill" style="width: ${hpPercent}%"></div>
+              <div class="battle-overview-bar-label">${unit.hp}/${unit.maxHp} HP</div>
+            </div>
+            <div class="battle-overview-unit-meta">
+              <span class="battle-overview-unit-armor">Armor ${unit.armor}/${unit.maxArmor}</span>
+              <span class="battle-overview-unit-mp">MP ${unit.currentCombatMp}/${unit.maxCombatMp}</span>
+            </div>
+          </article>`;
+        }).join("")}
+      </div>
+    </section>`;
+  }).join("");
+
+  battleOverviewEl.className = "battle-overview-grid";
+  battleOverviewEl.innerHTML = sideCards;
+}
+
 function refreshHoveredTooltip() {
-  if (!hoveredEntity || !gameStarted) {
+  if (!gameStarted) {
+    setTooltipHtml("");
+    setInspectorHtml("");
+    return;
+  }
+
+  if (!hoveredEntity) {
+    setTooltipHtml("");
+    setInspectorHtml(buildDefaultInspectorHtml());
     return;
   }
 
@@ -2066,9 +2361,11 @@ function refreshHoveredTooltip() {
     ) {
       hoveredEntity = null;
       setTooltipHtml("");
+      setInspectorHtml(buildDefaultInspectorHtml());
       return;
     }
-    setTooltipHtml(buildMapStackTooltipHtml(hoveredEntity.side));
+    setTooltipHtml(buildCompactMapStackTooltipHtml(hoveredEntity.side), hoverClientX, hoverClientY);
+    setInspectorHtml(buildMapStackInspectorHtml(hoveredEntity.side, true));
     return;
   }
 
@@ -2076,9 +2373,11 @@ function refreshHoveredTooltip() {
   if (!unit || !unit.alive) {
     hoveredEntity = null;
     setTooltipHtml("");
+    setInspectorHtml(buildDefaultInspectorHtml());
     return;
   }
-  setTooltipHtml(buildCombatUnitTooltipHtml(hoveredEntity.side, unit));
+  setTooltipHtml(buildCompactCombatUnitTooltipHtml(hoveredEntity.side, unit), hoverClientX, hoverClientY);
+  setInspectorHtml(buildCombatUnitInspectorHtml(hoveredEntity.side, unit));
 }
 
 function getMapTerrainRule(type) {
@@ -2641,10 +2940,18 @@ function beginCombatTurn(side) {
   decrementTurnSwapStatuses();
   const statusTick = applyBurningTick(side);
   if (statusTick.anyDeaths) {
-    appendCombatLog(`${state.stacks[side].race} suffers burning damage at turn start.`);
+    if (side === "enemy") {
+      appendEnemyTurnEntry(`${state.stacks[side].race} suffers burning damage at turn start.`);
+    } else {
+      appendCombatLog(`${state.stacks[side].race} suffers burning damage at turn start.`);
+    }
   }
   for (const entry of statusTick.logEntries) {
-    appendCombatLog(entry);
+    if (side === "enemy") {
+      appendEnemyTurnEntry(entry);
+    } else {
+      appendCombatLog(entry);
+    }
   }
   if (checkCombatEnd()) {
     updateControls();
@@ -2706,6 +3013,8 @@ function updateControls() {
   if (combatLogPanelEl) {
     combatLogPanelEl.style.display = state.mode === "combat" ? "block" : "none";
   }
+  renderBattleOverview();
+  renderEnemyTurnSummary();
 
   const active = getActivePlayerUnit();
   if (combatMpLabelEl) {
@@ -2745,18 +3054,24 @@ function updateControls() {
   endTurnBtn.disabled = state.gameOver;
 }
 
-function startCombat(initiator) {
+function getDefendingSide(attacker) {
+  return attacker === "player" ? "enemy" : "player";
+}
+
+function startCombat(attacker) {
   hoveredEntity = null;
   setTooltipHtml("");
   state.mode = "combat";
-  state.combatTurn = initiator;
+  state.combatTurn = getDefendingSide(attacker);
   state.combatTerrain = createCombatTerrain(COMBAT_GRID_SIZE);
   state.combat = {
     activePlayerUnitId: null,
     targeting: false,
-    log: []
+    log: [],
+    lastEnemyTurnEntries: []
   };
   clearCombatLog();
+  clearEnemyTurnSummary();
   resetBattleState();
 
   placeCombatUnits();
@@ -2766,12 +3081,12 @@ function startCombat(initiator) {
   const first = getAliveUnits("player")[0];
   state.combat.activePlayerUnitId = first ? first.id : null;
 
-  statusEl.textContent = `Combat View: ${state.stacks.player.race} (${getStackCount("player")}) engages ${state.stacks.enemy.race} (${getStackCount("enemy")}). ${initiator === "player" ? "Your" : "Enemy"} combat turn.`;
-  appendCombatLog(`${state.stacks.player.race} engages ${state.stacks.enemy.race}. ${initiator === "player" ? "Player" : "Enemy"} acts first.`);
+  statusEl.textContent = `Combat View: ${state.stacks.player.race} (${getStackCount("player")}) engages ${state.stacks.enemy.race} (${getStackCount("enemy")}). ${state.combatTurn === "player" ? "Your" : "Enemy"} combat turn.`;
+  appendCombatLog(`${state.stacks.player.race} engages ${state.stacks.enemy.race}. ${state.combatTurn === "player" ? "Player" : "Enemy"} defends and acts first.`);
   updateControls();
   draw();
 
-  if (initiator === "enemy") {
+  if (state.combatTurn === "enemy") {
     scheduleAction(120, enemyCombatTurn);
   }
 }
@@ -3098,6 +3413,7 @@ function enemyCombatTurn() {
   }
 
   clearTargetingMode();
+  clearEnemyTurnSummary();
   if (!beginCombatTurn("enemy")) {
     return;
   }
@@ -3108,7 +3424,7 @@ function enemyCombatTurn() {
 
     if (canUseCallOfBravery(unit)) {
       applyCallOfBravery(unit);
-      appendCombatLog(`${unitName(unit)} uses Call of Bravery.`);
+      appendEnemyTurnEntry(`${unitName(unit)} uses Call of Bravery.`);
       statusEl.textContent = "Combat View: Enemy battle cry echoes across the field.";
       continue;
     }
@@ -3117,7 +3433,7 @@ function enemyCombatTurn() {
       const fireballResult = useFireball(unit);
       if (fireballResult.ok) {
         for (const entry of fireballResult.logEntries) {
-          appendCombatLog(entry);
+          appendEnemyTurnEntry(entry);
         }
         statusEl.textContent = "Combat View: Enemy fireball resolved.";
         if (checkCombatEnd()) {
@@ -3136,12 +3452,12 @@ function enemyCombatTurn() {
         const result = resolveAttack("enemy", unit, "player", defender, profile);
         unit.currentCombatMp = 0;
         const logPrefix = `${unitName(unit)} ${result.attackLabel} -> ${unitName(defender)}`;
-        appendCombatLog(formatAttackResolutionLog(unit, defender, result, logPrefix));
+        appendEnemyTurnEntry(formatAttackResolutionLog(unit, defender, result, logPrefix));
         for (const sideEffect of applyAttackSideEffects(unit, defender, result)) {
-          appendCombatLog(sideEffect);
+          appendEnemyTurnEntry(sideEffect);
         }
         for (const entry of result.deathLogEntries || []) {
-          appendCombatLog(entry);
+          appendEnemyTurnEntry(entry);
         }
         statusEl.textContent = "Combat View: Enemy attack logged.";
 
@@ -3173,11 +3489,13 @@ function enemyCombatTurn() {
         unit.y = option.y;
         unit.currentCombatMp -= moveCost;
         unit.combatMoveSpentThisTurn = (unit.combatMoveSpentThisTurn || 0) + moveCost;
+        appendEnemyTurnEntry(`${unitName(unit)} moved to (${option.x}, ${option.y}) on ${terrainRule.label} (${moveCost} MP).`);
         moved = true;
         break;
       }
 
       if (!moved) {
+        appendEnemyTurnEntry(`${unitName(unit)} held position after failing to find a useful move.`);
         unit.currentCombatMp = 0;
       }
     }
@@ -3467,35 +3785,6 @@ function getUnitById(side, unitId) {
   return state.stacks[side].units.find((unit) => unit.id === unitId) || null;
 }
 
-function buildMapStackTooltipHtml(side) {
-  const stack = state.stacks[side];
-  const units = getAliveUnits(side);
-  const lines = units
-    .map((unit) => `<div>${formatUnitIdentity(unit)} | ${formatUnitStatLine(unit, false)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${formatUnitCombatEffectsHtml(unit)}`)
-    .join("");
-  return `<strong>${stack.race} Stack (${units.length}/${getStackCapacity(units)} units)</strong>${lines}`;
-}
-
-function buildCombatUnitTooltipHtml(side, unit) {
-  const active = side === "enemy" ? getActivePlayerUnit() : null;
-  let hitChanceText = "";
-  if (state.mode === "combat" && active && side === "enemy") {
-    const profiles = getAttackCandidates(active, "enemy")
-      .filter((candidate) => candidate.unit.id === unit.id)
-      .map((candidate) => candidate.profile);
-    const seen = new Set();
-    const lines = [];
-    for (const profile of profiles) {
-      if (seen.has(profile.id)) continue;
-      seen.add(profile.id);
-      const attackName = profile.id === "melee" ? "melee" : profile.label;
-      lines.push(`<div>Chance for ${unitName(active)} to hit with ${attackName}: ${getHitChance(active, unit, profile.attack)}%</div>`);
-    }
-    hitChanceText = lines.join("");
-  }
-  return `<strong>${state.stacks[side].race} ${formatUnitIdentity(unit)}</strong><div>${formatUnitStatLine(unit, true)}</div>${formatUnitLoadout(unit)}${formatUnitAbilitiesHtml(unit)}${formatUnitCombatEffectsHtml(unit)}${hitChanceText}`;
-}
-
 function updateHoveredEntity(event) {
   if (!gameStarted) return;
 
@@ -3510,29 +3799,24 @@ function updateHoveredEntity(event) {
   if (!nextHovered) {
     if (hoveredEntity) {
       hoveredEntity = null;
-      setTooltipHtml("", point.clientX, point.clientY);
+      hoverClientX = null;
+      hoverClientY = null;
       draw();
     }
     return;
   }
 
   hoveredEntity = nextHovered;
-  if (nextHovered.type === "mapStack") {
-    setTooltipHtml(buildMapStackTooltipHtml(nextHovered.side), point.clientX, point.clientY);
-  } else {
-    const unit = getUnitById(nextHovered.side, nextHovered.unitId);
-    if (unit) {
-      setTooltipHtml(buildCombatUnitTooltipHtml(nextHovered.side, unit), point.clientX, point.clientY);
-    }
-  }
-
+  hoverClientX = point.clientX;
+  hoverClientY = point.clientY;
   draw();
 }
 
 function clearHoveredEntity() {
   if (!hoveredEntity) return;
   hoveredEntity = null;
-  setTooltipHtml("");
+  hoverClientX = null;
+  hoverClientY = null;
   draw();
 }
 

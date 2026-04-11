@@ -2,9 +2,13 @@ import { COMBAT_GRID_SIZE } from "../core/constants.js";
 import { inBounds, manhattanDistance } from "./grid.js";
 import { createCombatTerrain, getCombatTerrainRule } from "./terrain.js";
 
-export function startCombat(state, initiator) {
+function getDefendingSide(attacker) {
+  return attacker === "player" ? "enemy" : "player";
+}
+
+export function startCombat(state, attacker) {
   state.mode = "combat";
-  state.combatTurn = initiator;
+  state.combatTurn = getDefendingSide(attacker);
   state.combat = {
     player: { x: 1, y: Math.floor(COMBAT_GRID_SIZE / 2) },
     enemy: { x: COMBAT_GRID_SIZE - 2, y: Math.floor(COMBAT_GRID_SIZE / 2) }

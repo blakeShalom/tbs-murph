@@ -39,11 +39,11 @@ export function createGameController({ ui, renderer, randomFn } = {}) {
     syncUi();
   }
 
-  function startCombatFor(initiator) {
-    startCombat(state, initiator);
-    status(`Combat View: ${state.units.player.race} engages ${state.units.enemy.race} on tactical grid. ${initiator === "player" ? "Your" : "Enemy"} combat turn.`);
+  function startCombatFor(attacker) {
+    startCombat(state, attacker);
+    status(`Combat View: ${state.units.player.race} engages ${state.units.enemy.race} on tactical grid. ${state.combatTurn === "player" ? "Your" : "Enemy"} combat turn.`);
     syncUi();
-    if (initiator === "enemy") {
+    if (state.combatTurn === "enemy") {
       enemyCombatTurn();
     }
   }

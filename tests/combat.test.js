@@ -9,14 +9,14 @@ import {
   startCombat
 } from "../src/systems/combat.js";
 
-test("startCombat initializes tactical positions, terrain, and combat MP", () => {
+test("startCombat initializes tactical positions, terrain, combat MP, and defender-first turn order", () => {
   const state = createInitialState();
   state.units.player.currentCombatMp = 0;
   state.units.enemy.currentCombatMp = 0;
   startCombat(state, "player");
 
   assert.equal(state.mode, "combat");
-  assert.equal(state.combatTurn, "player");
+  assert.equal(state.combatTurn, "enemy");
   assert.deepEqual(state.combat.player, { x: 1, y: 4 });
   assert.deepEqual(state.combat.enemy, { x: 6, y: 4 });
   assert.equal(state.combatTerrain[4][1], "open");
@@ -27,7 +27,7 @@ test("startCombat initializes tactical positions, terrain, and combat MP", () =>
 
 test("combat player movement consumes combat MP", () => {
   const state = createInitialState();
-  startCombat(state, "player");
+  startCombat(state, "enemy");
   state.combatTerrain[4][2] = "rough";
 
   const result = moveCombatPlayer(state, "ArrowRight");
@@ -39,7 +39,7 @@ test("combat player movement consumes combat MP", () => {
 
 test("combat player cannot move into occupied enemy tile", () => {
   const state = createInitialState();
-  startCombat(state, "player");
+  startCombat(state, "enemy");
   state.combat.player = { x: 5, y: 4 };
 
   const result = moveCombatPlayer(state, "ArrowRight");
@@ -49,7 +49,7 @@ test("combat player cannot move into occupied enemy tile", () => {
 
 test("combat player movement blocks impassable blocked tile", () => {
   const state = createInitialState();
-  startCombat(state, "player");
+  startCombat(state, "enemy");
   state.combatTerrain[4][2] = "blocked";
 
   const result = moveCombatPlayer(state, "ArrowRight");
@@ -59,7 +59,7 @@ test("combat player movement blocks impassable blocked tile", () => {
 
 test("combat player movement blocks when combat MP is insufficient", () => {
   const state = createInitialState();
-  startCombat(state, "player");
+  startCombat(state, "enemy");
   state.combatTerrain[4][2] = "rough";
   state.units.player.currentCombatMp = 1;
 
@@ -79,7 +79,7 @@ test("adjacency check returns true for side-by-side units", () => {
 
 test("enemy combat movement can move then attack", () => {
   const state = createInitialState();
-  startCombat(state, "enemy");
+  startCombat(state, "player");
   state.combat.player = { x: 3, y: 4 };
   state.combat.enemy = { x: 6, y: 4 };
   state.units.enemy.currentCombatMp = 3;
