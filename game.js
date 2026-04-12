@@ -24,8 +24,11 @@ const RACE_PREVIEW_HEIGHT = 170;
 const MAP_ART_SIZE = 64;
 const CENTAUR_COMBAT_SPRITE_NATIVE_WIDTH = 140;
 const CENTAUR_COMBAT_SPRITE_NATIVE_HEIGHT = 110;
+const CENTAUR_COMBAT_SPRITE_BOTTOM_TRIM = 10;
 const DEMON_COMBAT_SPRITE_NATIVE_WIDTH = 140;
 const DEMON_COMBAT_SPRITE_NATIVE_HEIGHT = 110;
+const CENTAUR_BANNER_ASSET = "img/races/centaur-banner.png";
+const DEMON_BANNER_ASSET = "img/races/demon-banner.png";
 
 const MAP_TERRAIN_RULES = {
   plains: { label: "Plains", cost: 1, passable: true, color: "#d8e2c5" },
@@ -136,7 +139,7 @@ const DEMON_UNIT_ARCHETYPES = [
   },
   {
     id: "incubus",
-    name: "Incubus",
+    name: "Efreet",
     loadout: "Fire Djinni Demon",
     coatColor: "#9a5137",
     stats: { hp: 23, attack: 16, damage: 14, armor: 8, evasiveness: 11, combatMp: 3 },
@@ -185,6 +188,38 @@ const CENTAUR_COMBAT_SPRITE_LOOKUP = {
     mane: "#f1eee6",
     weapon: "poleaxe"
   }
+};
+
+const CENTAUR_COMBAT_SPRITE_ASSETS = {
+  recon: "img/units/centaurs/recon.png",
+  brute: "img/units/centaurs/brute.png",
+  marksman: "img/units/centaurs/marksman.png",
+  captain: "img/units/centaurs/captain.png"
+};
+
+const CENTAUR_SOURCE_ART_ASSETS = {
+  recon: "img/units/centaurs/recon-source.png",
+  brute: "img/units/centaurs/brute-source.png",
+  marksman: "img/units/centaurs/marksman-source.png",
+  captain: "img/units/centaurs/captain-source.png"
+};
+
+const DEMON_COMBAT_SPRITE_ASSETS = {
+  imp: "img/units/demons/imp.png",
+  gog: "img/units/demons/gog.png",
+  "hell-hound": "img/units/demons/hell-hound.png",
+  succubus: "img/units/demons/succubus.png",
+  incubus: "img/units/demons/incubus.png",
+  "arch-fiend": "img/units/demons/arch-fiend.png"
+};
+
+const DEMON_SOURCE_ART_ASSETS = {
+  imp: "img/units/demons/imp-source.png",
+  gog: "img/units/demons/gog-source.png",
+  "hell-hound": "img/units/demons/hell-hound-source.png",
+  succubus: "img/units/demons/succubus-source.png",
+  incubus: "img/units/demons/incubus-source.png",
+  "arch-fiend": "img/units/demons/arch-fiend-source.png"
 };
 
 const DEMON_COMBAT_SPRITE_LOOKUP = {
@@ -242,21 +277,30 @@ function boardSize() {
   return 640;
 }
 
+const appRootEl = document.getElementById("appRoot");
 const board = document.getElementById("board");
 const ctx = board.getContext("2d");
 const setupScreenEl = document.getElementById("setupScreen");
+const battleHeaderEl = document.getElementById("battleHeader");
+const battleTitleEl = document.getElementById("battleTitle");
+const battleTurnSummaryEl = document.getElementById("battleTurnSummary");
 const playerRaceSelectEl = document.getElementById("playerRaceSelect");
 const enemyRaceSelectEl = document.getElementById("enemyRaceSelect");
 const playerRacePreviewEl = document.getElementById("playerRacePreview");
 const enemyRacePreviewEl = document.getElementById("enemyRacePreview");
 const startGameBtnEl = document.getElementById("startGameBtn");
 const hudPanelEl = document.getElementById("hudPanel");
+const mapHudEl = document.getElementById("mapHud");
+const battleHudEl = document.getElementById("battleHud");
 const boardWrapEl = document.getElementById("boardWrap");
+const battleStatusBannerEl = document.getElementById("battleStatusBanner");
 const unitTooltipEl = document.getElementById("unitTooltip");
 const unitInspectorEl = document.getElementById("unitInspector");
 const combatLogEl = document.getElementById("combatLog");
-const combatLogPanelEl = document.querySelector(".combat-log-panel");
-const battleOverviewEl = document.getElementById("battleOverview");
+const combatLogPaneEl = document.getElementById("combatLogPane");
+const battleArmyStripEl = document.getElementById("battleArmyStrip");
+const battleFeedTabsEl = document.getElementById("battleFeedTabs");
+const enemyTurnPaneEl = document.getElementById("enemyTurnPane");
 const enemyTurnSummaryEl = document.getElementById("enemyTurnSummary");
 const statusEl = document.getElementById("status");
 const modeLabelEl = document.getElementById("modeLabel");
@@ -264,11 +308,15 @@ const mapMpLabelEl = document.getElementById("mapMpLabel");
 const combatMpLabelEl = document.getElementById("combatMpLabel");
 const raceALabelEl = document.getElementById("raceALabel");
 const raceBLabelEl = document.getElementById("raceBLabel");
+const mapEndTurnBtn = document.getElementById("mapEndTurnBtn");
+const mapResetBtn = document.getElementById("mapResetBtn");
 const attackBtn = document.getElementById("attackBtn");
+const archeryBtn = document.getElementById("archeryBtn");
 const braveryBtn = document.getElementById("braveryBtn");
 const fireballBtn = document.getElementById("fireballBtn");
 const endTurnBtn = document.getElementById("endTurnBtn");
 const resetBtn = document.getElementById("resetBtn");
+const battleFeedTabButtons = Array.from(document.querySelectorAll(".battle-feed-tab"));
 
 let timelineToken = 0;
 const pendingActions = [];
@@ -280,9 +328,15 @@ let selectedRaces = {
 let hoveredEntity = null;
 let hoverClientX = null;
 let hoverClientY = null;
+let activeBattleFeedTab = "enemy";
 const raceArtCache = new Map();
 const centaurCombatSpriteCache = new Map();
 const demonCombatSpriteCache = new Map();
+const centaurCombatImageCache = new Map();
+const demonCombatImageCache = new Map();
+const raceBannerImageCache = new Map();
+const missingCentaurCombatSpriteWarnings = new Set();
+const missingDemonCombatSpriteWarnings = new Set();
 
 function getRaceById(raceId) {
   return RACE_OPTIONS.find((race) => race.id === raceId) || RACE_OPTIONS[0];
@@ -298,12 +352,64 @@ function resolveRaceChoice(choiceId) {
 function setGamePanelsVisible(visible) {
   hudPanelEl.classList.toggle("hidden-until-start", !visible);
   boardWrapEl.classList.toggle("hidden-until-start", !visible);
+  appRootEl?.classList.toggle("app--started", visible);
   setupScreenEl.classList.toggle("hidden", visible);
 }
 
 function updateRaceLabels() {
   raceALabelEl.textContent = state.stacks.player.race;
   raceBLabelEl.textContent = state.stacks.enemy.race;
+}
+
+function setBattleFeedTab(tab) {
+  activeBattleFeedTab = tab === "log" ? "log" : "enemy";
+  for (const button of battleFeedTabButtons) {
+    const isActive = button.dataset.feedTab === activeBattleFeedTab;
+    button.classList.toggle("is-active", isActive);
+    button.setAttribute("aria-selected", String(isActive));
+  }
+  if (enemyTurnPaneEl) {
+    const active = activeBattleFeedTab === "enemy";
+    enemyTurnPaneEl.classList.toggle("is-active", active);
+    enemyTurnPaneEl.hidden = !active;
+  }
+  if (combatLogPaneEl) {
+    const active = activeBattleFeedTab === "log";
+    combatLogPaneEl.classList.toggle("is-active", active);
+    combatLogPaneEl.hidden = !active;
+  }
+}
+
+function getBattleStatusText() {
+  return statusEl?.textContent || "";
+}
+
+function updateBattleShell() {
+  const inCombat = state.mode === "combat";
+  appRootEl?.classList.toggle("app--combat", inCombat);
+  hudPanelEl?.classList.toggle("hud--combat", inCombat);
+
+  if (mapHudEl) {
+    mapHudEl.hidden = inCombat;
+  }
+  if (battleHudEl) {
+    battleHudEl.hidden = !inCombat;
+  }
+
+  const active = getActivePlayerUnit();
+  if (battleTitleEl) {
+    battleTitleEl.textContent = `${state.stacks.player.race} vs ${state.stacks.enemy.race}`;
+  }
+  if (battleTurnSummaryEl) {
+    if (!inCombat || !state.combat) {
+      battleTurnSummaryEl.textContent = "Battle details will appear here when combat begins.";
+    } else {
+      const sideLabel = state.combatTurn === "player" ? "Player turn" : "Enemy turn";
+      const activeLabel = active ? `${unitName(active)} ready` : "No active unit";
+      const movementLabel = active ? `${active.currentCombatMp}/${active.maxCombatMp} MOV` : "0/0 MOV";
+      battleTurnSummaryEl.textContent = `${sideLabel} · ${activeLabel} · ${movementLabel}`;
+    }
+  }
 }
 
 const initialState = () => {
@@ -644,6 +750,37 @@ function createArtCanvas(width, height) {
   return canvas;
 }
 
+function drawImageCover(ctx, image, dx, dy, dw, dh) {
+  const sourceWidth = image.naturalWidth || image.width;
+  const sourceHeight = image.naturalHeight || image.height;
+  if (!sourceWidth || !sourceHeight) return;
+
+  const sourceAspect = sourceWidth / sourceHeight;
+  const destAspect = dw / dh;
+  let sx = 0;
+  let sy = 0;
+  let sw = sourceWidth;
+  let sh = sourceHeight;
+
+  if (sourceAspect > destAspect) {
+    sw = sourceHeight * destAspect;
+    sx = (sourceWidth - sw) / 2;
+  } else {
+    sh = sourceWidth / destAspect;
+    sy = (sourceHeight - sh) / 2;
+  }
+
+  ctx.drawImage(image, sx, sy, sw, sh, dx, dy, dw, dh);
+}
+
+function invalidateRaceArtCacheForRace(raceId) {
+  for (const key of [...raceArtCache.keys()]) {
+    if (key.startsWith(`${raceId}:`)) {
+      raceArtCache.delete(key);
+    }
+  }
+}
+
 function drawFrameBorder(ctx, width, height) {
   const border = Math.max(2, Math.floor(width * 0.03));
   ctx.fillStyle = "rgba(232, 212, 166, 0.78)";
@@ -756,7 +893,69 @@ function drawCentaurArcherArt(ctx, width, height) {
   drawFrameBorder(ctx, width, height);
 }
 
-function drawCentaurTokenArt(ctx, size) {
+function loadRaceBannerImage(raceId) {
+  const src = raceId === "centaur-clans"
+    ? CENTAUR_BANNER_ASSET
+    : raceId === "demon-horde"
+      ? DEMON_BANNER_ASSET
+      : null;
+  if (!src) {
+    return null;
+  }
+
+  const existing = raceBannerImageCache.get(raceId);
+  if (existing) {
+    return existing;
+  }
+
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    invalidateRaceArtCacheForRace(raceId);
+    updateSetupRacePreviews();
+    if (gameStarted) {
+      draw();
+    }
+  };
+  img.onerror = () => {
+    raceBannerImageCache.set(raceId, null);
+  };
+  img.src = src;
+  raceBannerImageCache.set(raceId, img);
+  return img;
+}
+
+function drawCentaurBannerArt(ctx, width, height, raceId = "centaur-clans") {
+  const banner = loadRaceBannerImage(raceId);
+  if (banner?.complete && banner.naturalWidth > 0) {
+    drawImageCover(ctx, banner, 0, 0, width, height);
+    drawFrameBorder(ctx, width, height);
+    return;
+  }
+
+  drawCentaurArcherArt(ctx, width, height);
+}
+
+function drawDemonBannerArt(ctx, width, height, raceId = "demon-horde") {
+  const banner = loadRaceBannerImage(raceId);
+  if (banner?.complete && banner.naturalWidth > 0) {
+    drawImageCover(ctx, banner, 0, 0, width, height);
+    drawFrameBorder(ctx, width, height);
+    return;
+  }
+
+  drawDemonHordeArt(ctx, width, height);
+}
+
+function getStrongestStackUnit(side) {
+  const units = getAliveUnits(side);
+  if (!units.length) return null;
+  const score = (unit) =>
+    unit.hp + unit.armor + unit.attack * 2 + unit.damage * 2 + unit.evasiveness + unit.maxCombatMp;
+  return units.reduce((best, unit) => (score(unit) > score(best) ? unit : best), units[0]);
+}
+
+function drawCentaurTokenArt(ctx, size, unit, side) {
   const sky = ctx.createLinearGradient(0, 0, 0, size);
   sky.addColorStop(0, "#8ba2ab");
   sky.addColorStop(1, "#4d5f45");
@@ -765,6 +964,16 @@ function drawCentaurTokenArt(ctx, size) {
 
   ctx.fillStyle = "#6c7a52";
   ctx.fillRect(0, size * 0.62, size, size * 0.38);
+
+  const sprite = unit ? getCentaurCombatSpriteCanvas(unit, side) : null;
+  if (sprite) {
+    const drawW = size * 0.92;
+    const drawH = size * 0.84;
+    const drawX = (size - drawW) / 2;
+    const drawY = size * 0.08;
+    ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+    return;
+  }
 
   const centerX = size * 0.52;
   const centerY = size * 0.6;
@@ -811,6 +1020,46 @@ function drawCentaurTokenArt(ctx, size) {
   ctx.moveTo(centerX + 20 * scale, centerY - 10 * scale);
   ctx.lineTo(centerX + 16 * scale, centerY - 12 * scale);
   ctx.lineTo(centerX + 16 * scale, centerY - 8 * scale);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawDemonTokenArt(ctx, size, unit, side) {
+  const sky = ctx.createLinearGradient(0, 0, 0, size);
+  sky.addColorStop(0, "#6f1716");
+  sky.addColorStop(1, "#2c0909");
+  ctx.fillStyle = sky;
+  ctx.fillRect(0, 0, size, size);
+
+  ctx.fillStyle = "#4b1712";
+  ctx.fillRect(0, size * 0.62, size, size * 0.38);
+
+  const sprite = unit ? getDemonCombatSpriteCanvas(unit, side) : null;
+  if (sprite) {
+    const drawW = size * 0.92;
+    const drawH = size * 0.84;
+    const drawX = (size - drawW) / 2;
+    const drawY = size * 0.08;
+    ctx.drawImage(sprite, drawX, drawY, drawW, drawH);
+    return;
+  }
+
+  const centerX = size * 0.5;
+  const centerY = size * 0.55;
+  const scale = size / 64;
+
+  ctx.fillStyle = "#1a090b";
+  ctx.beginPath();
+  ctx.ellipse(centerX, centerY + 7 * scale, 18 * scale, 8 * scale, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#ab2e22";
+  ctx.beginPath();
+  ctx.moveTo(centerX - 9 * scale, centerY + 12 * scale);
+  ctx.lineTo(centerX - 15 * scale, centerY - 3 * scale);
+  ctx.lineTo(centerX - 10 * scale, centerY - 13 * scale);
+  ctx.lineTo(centerX - 2 * scale, centerY - 3 * scale);
+  ctx.lineTo(centerX + 4 * scale, centerY + 11 * scale);
   ctx.closePath();
   ctx.fill();
 }
@@ -911,76 +1160,6 @@ function drawDemonHordeArt(ctx, width, height) {
   ctx.fillRect(innerX, innerY, innerW, innerH);
 
   drawFrameBorder(ctx, width, height);
-}
-
-function drawDemonTokenArt(ctx, size) {
-  const sky = ctx.createLinearGradient(0, 0, 0, size);
-  sky.addColorStop(0, "#6f1716");
-  sky.addColorStop(1, "#2c0909");
-  ctx.fillStyle = sky;
-  ctx.fillRect(0, 0, size, size);
-
-  ctx.fillStyle = "#4b1712";
-  ctx.fillRect(0, size * 0.62, size, size * 0.38);
-
-  const centerX = size * 0.5;
-  const centerY = size * 0.55;
-  const scale = size / 64;
-
-  ctx.fillStyle = "#1a090b";
-  ctx.beginPath();
-  ctx.ellipse(centerX, centerY + 7 * scale, 18 * scale, 8 * scale, 0, 0, Math.PI * 2);
-  ctx.fill();
-
-  ctx.fillStyle = "#ab2e22";
-  ctx.beginPath();
-  ctx.moveTo(centerX - 9 * scale, centerY + 12 * scale);
-  ctx.lineTo(centerX - 15 * scale, centerY - 3 * scale);
-  ctx.lineTo(centerX - 10 * scale, centerY - 13 * scale);
-  ctx.lineTo(centerX - 2 * scale, centerY - 3 * scale);
-  ctx.lineTo(centerX + 4 * scale, centerY + 11 * scale);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(centerX + 8 * scale, centerY + 11 * scale);
-  ctx.lineTo(centerX + 2 * scale, centerY - 3 * scale);
-  ctx.lineTo(centerX + 8 * scale, centerY - 13 * scale);
-  ctx.lineTo(centerX + 16 * scale, centerY - 2 * scale);
-  ctx.lineTo(centerX + 14 * scale, centerY + 11 * scale);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "#601814";
-  ctx.beginPath();
-  ctx.moveTo(centerX - 1 * scale, centerY - 16 * scale);
-  ctx.lineTo(centerX - 6 * scale, centerY - 27 * scale);
-  ctx.lineTo(centerX - 2 * scale, centerY - 26 * scale);
-  ctx.lineTo(centerX + 1 * scale, centerY - 20 * scale);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.beginPath();
-  ctx.moveTo(centerX + 3 * scale, centerY - 15 * scale);
-  ctx.lineTo(centerX + 9 * scale, centerY - 26 * scale);
-  ctx.lineTo(centerX + 12 * scale, centerY - 24 * scale);
-  ctx.lineTo(centerX + 7 * scale, centerY - 17 * scale);
-  ctx.closePath();
-  ctx.fill();
-
-  ctx.fillStyle = "#f2d8b2";
-  ctx.beginPath();
-  ctx.arc(centerX + 1 * scale, centerY - 7 * scale, 4.8 * scale, 0, Math.PI * 2);
-  ctx.fill();
-
-  const flame = ctx.createRadialGradient(centerX + 17 * scale, centerY - 4 * scale, 1, centerX + 17 * scale, centerY - 4 * scale, 11 * scale);
-  flame.addColorStop(0, "rgba(255, 208, 118, 0.95)");
-  flame.addColorStop(0.6, "rgba(255, 118, 48, 0.72)");
-  flame.addColorStop(1, "rgba(255, 82, 33, 0)");
-  ctx.fillStyle = flame;
-  ctx.beginPath();
-  ctx.ellipse(centerX + 17 * scale, centerY - 4 * scale, 8 * scale, 10 * scale, 0.2, 0, Math.PI * 2);
-  ctx.fill();
 }
 
 function drawGenericRaceArt(ctx, width, height, race) {
@@ -1553,11 +1732,135 @@ function drawDemonCombatSprite(drawCtx, look, side, width, height) {
   drawCtx.fillRect(0, 0, width, height);
 }
 
+function invalidateCentaurSpriteCaches() {
+  centaurCombatSpriteCache.clear();
+}
+
+function warnMissingCentaurSprite(archetypeId, src) {
+  const key = `${archetypeId}:${src}`;
+  if (missingCentaurCombatSpriteWarnings.has(key)) {
+    return;
+  }
+  missingCentaurCombatSpriteWarnings.add(key);
+  console.warn(`Centaur sprite failed to load for ${archetypeId}; falling back to procedural art.`, src);
+}
+
+function loadCentaurCombatImage(archetypeId) {
+  if (!archetypeId || !CENTAUR_COMBAT_SPRITE_ASSETS[archetypeId]) {
+    return null;
+  }
+
+  const existing = centaurCombatImageCache.get(archetypeId);
+  if (existing) {
+    return existing;
+  }
+
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    invalidateCentaurSpriteCaches();
+    if (gameStarted) {
+      updateControls();
+      draw();
+    }
+  };
+  img.onerror = () => {
+    warnMissingCentaurSprite(archetypeId, img.src);
+    centaurCombatImageCache.set(archetypeId, null);
+  };
+  img.src = CENTAUR_COMBAT_SPRITE_ASSETS[archetypeId];
+  centaurCombatImageCache.set(archetypeId, img);
+  return img;
+}
+
+function warnMissingDemonSprite(archetypeId, src) {
+  const key = `${archetypeId}:${src}`;
+  if (missingDemonCombatSpriteWarnings.has(key)) {
+    return;
+  }
+  missingDemonCombatSpriteWarnings.add(key);
+  console.warn(`Demon sprite failed to load for ${archetypeId}; falling back to procedural art.`, src);
+}
+
+function loadDemonCombatImage(archetypeId) {
+  if (!archetypeId || !DEMON_COMBAT_SPRITE_ASSETS[archetypeId]) {
+    return null;
+  }
+
+  const existing = demonCombatImageCache.get(archetypeId);
+  if (existing) {
+    return existing;
+  }
+
+  const img = new Image();
+  img.decoding = "async";
+  img.onload = () => {
+    demonCombatSpriteCache.clear();
+    if (gameStarted) {
+      updateControls();
+      draw();
+    }
+  };
+  img.onerror = () => {
+    warnMissingDemonSprite(archetypeId, img.src);
+    demonCombatImageCache.set(archetypeId, null);
+  };
+  img.src = DEMON_COMBAT_SPRITE_ASSETS[archetypeId];
+  demonCombatImageCache.set(archetypeId, img);
+  return img;
+}
+
+function buildCentaurImageSpriteCanvas(image, side) {
+  const outputCanvas = createArtCanvas(CENTAUR_COMBAT_SPRITE_NATIVE_WIDTH, CENTAUR_COMBAT_SPRITE_NATIVE_HEIGHT);
+  const outputCtx = outputCanvas.getContext("2d");
+  const sourceHeight = Math.max(1, image.naturalHeight - CENTAUR_COMBAT_SPRITE_BOTTOM_TRIM);
+  const drawWidth = outputCanvas.width;
+  const drawHeight = outputCanvas.height;
+  const drawX = 0;
+  const drawY = 0;
+
+  outputCtx.save();
+  if (side === "enemy") {
+    outputCtx.translate(outputCanvas.width, 0);
+    outputCtx.scale(-1, 1);
+  }
+  outputCtx.drawImage(image, 0, 0, image.naturalWidth, sourceHeight, drawX, drawY, drawWidth, drawHeight);
+  outputCtx.restore();
+
+  return outputCanvas;
+}
+
+function buildDemonImageSpriteCanvas(image, side) {
+  const outputCanvas = createArtCanvas(DEMON_COMBAT_SPRITE_NATIVE_WIDTH, DEMON_COMBAT_SPRITE_NATIVE_HEIGHT);
+  const outputCtx = outputCanvas.getContext("2d");
+  const drawWidth = outputCanvas.width;
+  const drawHeight = outputCanvas.height;
+
+  outputCtx.save();
+  if (side === "enemy") {
+    outputCtx.translate(outputCanvas.width, 0);
+    outputCtx.scale(-1, 1);
+  }
+  outputCtx.drawImage(image, 0, 0, drawWidth, drawHeight);
+  outputCtx.restore();
+
+  return outputCanvas;
+}
+
 function getCentaurCombatSpriteCanvas(unit, side) {
   const look = getCentaurCombatLook(unit);
   const key = `${unit.archetypeId || "recon"}:${side}`;
   if (centaurCombatSpriteCache.has(key)) {
     return centaurCombatSpriteCache.get(key);
+  }
+
+  const spriteImage = loadCentaurCombatImage(unit.archetypeId || "recon");
+  if (spriteImage?.complete && spriteImage.naturalWidth > 0) {
+    const imageSpriteCanvas = buildCentaurImageSpriteCanvas(spriteImage, side);
+    if (imageSpriteCanvas) {
+      centaurCombatSpriteCache.set(key, imageSpriteCanvas);
+      return imageSpriteCanvas;
+    }
   }
 
   const spriteCanvas = createArtCanvas(CENTAUR_COMBAT_SPRITE_NATIVE_WIDTH, CENTAUR_COMBAT_SPRITE_NATIVE_HEIGHT);
@@ -1572,6 +1875,15 @@ function getDemonCombatSpriteCanvas(unit, side) {
   const key = `${unit.archetypeId || "imp"}:${side}`;
   if (demonCombatSpriteCache.has(key)) {
     return demonCombatSpriteCache.get(key);
+  }
+
+  const spriteImage = loadDemonCombatImage(unit.archetypeId || "imp");
+  if (spriteImage?.complete && spriteImage.naturalWidth > 0) {
+    const imageSpriteCanvas = buildDemonImageSpriteCanvas(spriteImage, side);
+    if (imageSpriteCanvas) {
+      demonCombatSpriteCache.set(key, imageSpriteCanvas);
+      return imageSpriteCanvas;
+    }
   }
 
   const spriteCanvas = createArtCanvas(DEMON_COMBAT_SPRITE_NATIVE_WIDTH, DEMON_COMBAT_SPRITE_NATIVE_HEIGHT);
@@ -1620,15 +1932,15 @@ function getRaceArtCanvas(race, variant) {
   const artCtx = artCanvas.getContext("2d");
   if (race.artKey === "centaur-archer") {
     if (variant === "map") {
-      drawCentaurTokenArt(artCtx, size.width);
+      drawCentaurTokenArt(artCtx, size.width, null, "player");
     } else {
-      drawCentaurArcherArt(artCtx, size.width, size.height);
+      drawCentaurBannerArt(artCtx, size.width, size.height, race.id);
     }
   } else if (race.artKey === "demon-horde") {
     if (variant === "map") {
-      drawDemonTokenArt(artCtx, size.width);
+      drawDemonTokenArt(artCtx, size.width, null, "player");
     } else {
-      drawDemonHordeArt(artCtx, size.width, size.height);
+      drawDemonBannerArt(artCtx, size.width, size.height, race.id);
     }
   } else {
     drawGenericRaceArt(artCtx, size.width, size.height, race);
@@ -2041,12 +2353,13 @@ function getStatusBadgeLabels(unit) {
   return labels;
 }
 
-function buildBadgeRowHtml(labels, max = labels.length) {
+function buildBadgeRowHtml(labels, max = labels.length, badgeClassName = "") {
   const unique = [...new Set(labels)].slice(0, max);
   if (unique.length === 0) {
     return "";
   }
-  return `<div class="badge-row">${unique.map((label) => `<span class="chip-badge">${label}</span>`).join("")}</div>`;
+  const classSuffix = badgeClassName ? ` ${badgeClassName}` : "";
+  return `<div class="badge-row">${unique.map((label) => `<span class="chip-badge${classSuffix}">${label}</span>`).join("")}</div>`;
 }
 
 function formatCompactVitals(unit, includeCurrentMove = false) {
@@ -2075,6 +2388,25 @@ function getCombatHitChanceEntries(side, unit) {
     lines.push(`${attackName}: ${getHitChance(active, unit, profile.attack)}% hit chance`);
   }
   return lines;
+}
+
+function getProjectedAttackBadge(unit) {
+  if (state.mode !== "combat" || !unit || unit.side !== "enemy") {
+    return "";
+  }
+
+  const active = getActivePlayerUnit();
+  if (!active || state.combatTurn !== "player") {
+    return "";
+  }
+
+  const candidate = getAttackCandidates(active, "enemy").find((entry) => entry.unit.id === unit.id);
+  if (!candidate) {
+    return "";
+  }
+
+  const attackName = candidate.profile.id === "melee" ? "Melee" : candidate.profile.label;
+  return `${attackName} ${getHitChance(active, unit, candidate.profile.attack)}%`;
 }
 
 function buildInspectorStatGrid(unit, includeCurrentMove = false) {
@@ -2106,6 +2438,28 @@ function buildInspectorListSection(title, entries) {
     .join("")}</ul></div>`;
 }
 
+function getUnitSourceArtAsset(unit) {
+  if (!unit?.archetypeId) {
+    return "";
+  }
+  if (unit.unitRaceId === "centaur-clans") {
+    return CENTAUR_SOURCE_ART_ASSETS[unit.archetypeId] || "";
+  }
+  if (unit.unitRaceId === "demon-horde") {
+    return DEMON_SOURCE_ART_ASSETS[unit.archetypeId] || "";
+  }
+  return "";
+}
+
+function buildInspectorArtHtml(unit) {
+  const source = getUnitSourceArtAsset(unit);
+  if (!source) {
+    return "";
+  }
+  const label = escapeHtml(formatUnitIdentity(unit));
+  return `<figure class="unit-inspector-art-frame"><a class="unit-inspector-art-link" href="${source}" target="_blank" rel="noreferrer"><img class="unit-inspector-art" src="${source}" alt="${label} artwork" loading="eager" decoding="async" /></a><figcaption class="unit-inspector-art-caption">${label} full artwork</figcaption></figure>`;
+}
+
 function buildCompactMapStackTooltipHtml(side) {
   const stack = state.stacks[side];
   const units = getAliveUnits(side);
@@ -2119,7 +2473,13 @@ function buildCompactMapStackTooltipHtml(side) {
 
 function buildCompactCombatUnitTooltipHtml(side, unit) {
   const badges = [...getStatusBadgeLabels(unit), ...getAbilityBadgeLabels(unit)];
-  return `<strong>${formatUnitIdentity(unit)}</strong><div class="unit-tooltip-line">${formatCompactVitals(unit, true)}</div>${buildBadgeRowHtml(badges, 3)}`;
+  const attackPreview = getProjectedAttackBadge(unit);
+  const previewBadges = attackPreview ? [attackPreview] : [];
+  return `<strong>${formatUnitIdentity(unit)}</strong><div class="unit-tooltip-line">${formatCompactVitals(unit, true)}</div>${buildBadgeRowHtml(badges, 1)}${buildBadgeRowHtml(
+    previewBadges,
+    1,
+    side === "enemy" ? "chip-badge-enemy" : ""
+  )}`;
 }
 
 function buildMapStackInspectorHtml(side, emphasizeHover = false) {
@@ -2161,7 +2521,7 @@ function buildCombatUnitInspectorHtml(side, unit, emphasizeSelection = false) {
     : side === "player"
       ? "Hovered Ally"
       : "Hovered Target";
-  return `<div class="unit-inspector-kicker">${kicker}</div><h4 class="unit-inspector-title">${formatUnitIdentity(unit)}</h4><div class="unit-inspector-subtitle">${state.stacks[side].race} · ${side === "player" ? "Player" : "Enemy"} unit</div>${buildInspectorStatGrid(
+  return `<div class="unit-inspector-kicker">${kicker}</div><h4 class="unit-inspector-title">${formatUnitIdentity(unit)}</h4><div class="unit-inspector-subtitle">${state.stacks[side].race} · ${side === "player" ? "Player" : "Enemy"} unit</div>${buildInspectorArtHtml(unit)}${buildInspectorStatGrid(
     unit,
     true
   )}${buildBadgeRowHtml(badges, 6)}${loadoutSection}${buildInspectorListSection("Abilities", abilityEntries)}${buildInspectorListSection(
@@ -2216,12 +2576,10 @@ function setTooltipHtml(html, x, y) {
 }
 
 function clearCombatLog() {
-  if (combatLogEl) {
-    combatLogEl.innerHTML = "";
-  }
   if (state?.combat?.log) {
     state.combat.log = [];
   }
+  renderCombatLog();
 }
 
 function escapeHtml(value) {
@@ -2253,16 +2611,7 @@ function appendCombatLog(entry) {
       state.combat.log.splice(0, state.combat.log.length - MAX_COMBAT_LOG_ENTRIES);
     }
   }
-
-  if (!combatLogEl) return;
-  const item = document.createElement("li");
-  item.textContent = entry;
-  combatLogEl.appendChild(item);
-
-  while (combatLogEl.children.length > MAX_COMBAT_LOG_ENTRIES) {
-    combatLogEl.removeChild(combatLogEl.firstElementChild);
-  }
-  combatLogEl.scrollTop = combatLogEl.scrollHeight;
+  renderCombatLog();
 }
 
 function appendEnemyTurnEntry(entry) {
@@ -2273,6 +2622,18 @@ function appendEnemyTurnEntry(entry) {
     }
     state.combat.lastEnemyTurnEntries.push(entry);
   }
+  setBattleFeedTab("enemy");
+  renderEnemyTurnSummary();
+}
+
+function renderCombatLog() {
+  if (!combatLogEl) return;
+  const entries = [...(state.combat?.log || [])].reverse();
+  if (entries.length === 0) {
+    combatLogEl.innerHTML = `<li>No combat actions logged yet.</li>`;
+    return;
+  }
+  combatLogEl.innerHTML = entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("");
 }
 
 function renderEnemyTurnSummary() {
@@ -2292,15 +2653,18 @@ function renderEnemyTurnSummary() {
   }
 
   enemyTurnSummaryEl.className = "";
-  enemyTurnSummaryEl.innerHTML = `<p class="enemy-turn-caption">Review the enemy's last full combat turn before choosing your next move.</p><ol class="enemy-turn-list">${entries.map((entry) => `<li>${escapeHtml(entry)}</li>`).join("")}</ol>`;
+  enemyTurnSummaryEl.innerHTML = `<p class="enemy-turn-caption">Review the enemy's last full combat turn before choosing your next move.</p><div class="enemy-turn-scroll"><ol class="enemy-turn-list">${[...entries]
+    .reverse()
+    .map((entry) => `<li>${escapeHtml(entry)}</li>`)
+    .join("")}</ol></div>`;
 }
 
 function renderBattleOverview() {
-  if (!battleOverviewEl) return;
+  if (!battleArmyStripEl) return;
 
   if (state.mode !== "combat" || !state.combat) {
-    battleOverviewEl.className = "battle-overview-empty";
-    battleOverviewEl.textContent = "Enter combat to see each unit's health and armor.";
+    battleArmyStripEl.className = "battle-overview-empty";
+    battleArmyStripEl.textContent = "Enter combat to see each unit's health and armor.";
     return;
   }
 
@@ -2336,8 +2700,8 @@ function renderBattleOverview() {
     </section>`;
   }).join("");
 
-  battleOverviewEl.className = "battle-overview-grid";
-  battleOverviewEl.innerHTML = sideCards;
+  battleArmyStripEl.className = "battle-overview-grid";
+  battleArmyStripEl.innerHTML = sideCards;
 }
 
 function refreshHoveredTooltip() {
@@ -2433,11 +2797,33 @@ function cycleActivePlayerUnit() {
   const currentId = state.combat.activePlayerUnitId;
   const index = alive.findIndex((unit) => unit.id === currentId);
   const next = alive[(index + 1 + alive.length) % alive.length];
-  state.combat.activePlayerUnitId = next.id;
-  clearTargetingMode();
-  statusEl.textContent = `Combat View: Selected ${unitName(next)} (${next.currentCombatMp}/${next.maxCombatMp} MP).`;
+  selectActivePlayerUnit(next.id);
+}
+
+function selectActivePlayerUnit(unitId, options = {}) {
+  if (state.mode !== "combat" || !state.combat) {
+    return false;
+  }
+
+  const unit = getUnitById("player", unitId);
+  if (!unit?.alive) {
+    return false;
+  }
+
+  const changed = state.combat.activePlayerUnitId !== unit.id;
+  state.combat.activePlayerUnitId = unit.id;
+
+  if (changed || options.clearTargeting !== false) {
+    clearTargetingMode();
+  }
+
+  if (options.announce !== false) {
+    statusEl.textContent = `Combat View: Selected ${unitName(unit)} (${unit.currentCombatMp}/${unit.maxCombatMp} MP).`;
+  }
+
   updateControls();
   draw();
+  return true;
 }
 
 function getCombatUnitAt(x, y) {
@@ -2530,27 +2916,31 @@ function getArcheryProfile(attacker) {
     attack: Math.max(1, getEffectiveAttack(attacker) - 2 + marksmanshipBonus),
     damage: Math.max(1, getEffectiveDamage(attacker) - 2 + marksmanshipBonus),
     range: 2 + rangeBonus,
-    targeting: "orthogonal-line",
+    targeting: "line-of-sight",
     priority: 1
   });
 }
 
-function isClearOrthogonalShot(attacker, defender) {
-  if (attacker.x !== defender.x && attacker.y !== defender.y) {
-    return false;
+function isClearLineOfSight(attacker, defender) {
+  const dx = defender.x - attacker.x;
+  const dy = defender.y - attacker.y;
+  const steps = Math.max(Math.abs(dx), Math.abs(dy));
+  if (steps <= 1) {
+    return true;
   }
 
-  const dx = Math.sign(defender.x - attacker.x);
-  const dy = Math.sign(defender.y - attacker.y);
-  let x = attacker.x + dx;
-  let y = attacker.y + dy;
+  const stepX = dx / steps;
+  const stepY = dy / steps;
 
-  while (x !== defender.x || y !== defender.y) {
+  for (let step = 1; step < steps; step += 1) {
+    const x = Math.round(attacker.x + stepX * step);
+    const y = Math.round(attacker.y + stepY * step);
+    if (!inBounds(x, y, COMBAT_GRID_SIZE)) {
+      return false;
+    }
     if (getCombatUnitAt(x, y)) {
       return false;
     }
-    x += dx;
-    y += dy;
   }
 
   return true;
@@ -2567,14 +2957,14 @@ function getRangedTargets(attacker, defenderSide) {
   }
 
   return getAliveUnits(defenderSide).filter((unit) => {
-    const distance = manhattan(attacker, unit);
+    const distance = chebyshev(attacker.x, attacker.y, unit.x, unit.y);
     if (distance <= 1 || distance > archery.range) {
       return false;
     }
     if (isDirectStrikeBlocked(attacker, unit, archery)) {
       return false;
     }
-    return isClearOrthogonalShot(attacker, unit);
+    return true;
   });
 }
 
@@ -2593,7 +2983,7 @@ function getTargetsForProfile(attacker, defenderSide, profile) {
     return adjacentTargets(attacker, defenderSide).filter((unit) => !isDirectStrikeBlocked(attacker, unit, profile));
   }
 
-  if (profile.targeting === "orthogonal-line") {
+  if (profile.targeting === "line-of-sight") {
     return getRangedTargets(attacker, defenderSide);
   }
 
@@ -2615,6 +3005,96 @@ function getAttackCandidates(attacker, defenderSide) {
 
   candidates.sort((a, b) => a.profile.priority - b.profile.priority || a.distance - b.distance || a.unit.id.localeCompare(b.unit.id));
   return candidates;
+}
+
+function getActionableAttackProfiles(attacker, defenderSide) {
+  const profiles = new Map();
+  for (const candidate of getAttackCandidates(attacker, defenderSide)) {
+    if (!profiles.has(candidate.profile.id)) {
+      profiles.set(candidate.profile.id, {
+        profile: candidate.profile,
+        candidates: []
+      });
+    }
+    profiles.get(candidate.profile.id).candidates.push(candidate);
+  }
+  return [...profiles.values()].sort((a, b) => a.profile.priority - b.profile.priority);
+}
+
+function isRangedProfile(profile) {
+  return profile.targeting !== "adjacent" || profile.range > 1;
+}
+
+function getAttackButtonLabel(profileId) {
+  if (profileId === "melee") return "Attack";
+  if (profileId === "archery") return "Archery";
+  return profileId.charAt(0).toUpperCase() + profileId.slice(1);
+}
+
+function getCombatTargeting() {
+  if (state.mode !== "combat" || !state.combat?.targeting) {
+    return null;
+  }
+
+  const active = getActivePlayerUnit();
+  if (!active || state.combat.targeting.attackerId !== active.id) {
+    clearTargetingMode();
+    return null;
+  }
+
+  if (state.combat.targeting.kind === "attack") {
+    const actionable = getActionableAttackProfiles(active, "enemy").find(
+      (entry) => entry.profile.id === state.combat.targeting.profileId
+    );
+    if (!actionable) {
+      clearTargetingMode();
+      return null;
+    }
+    return {
+      kind: "attack",
+      attacker: active,
+      profile: actionable.profile,
+      candidates: actionable.candidates
+    };
+  }
+
+  if (state.combat.targeting.kind === "fireball") {
+    const options = getFireballTargets(active);
+    if (options.length === 0) {
+      clearTargetingMode();
+      return null;
+    }
+    return {
+      kind: "fireball",
+      attacker: active,
+      options
+    };
+  }
+
+  clearTargetingMode();
+  return null;
+}
+
+function getTilesForAttackProfile(attacker, profile) {
+  const tiles = [];
+
+  if (profile.targeting === "adjacent") {
+    return getOrthogonalAdjacentTiles(attacker.x, attacker.y);
+  }
+
+  if (profile.targeting === "line-of-sight") {
+    for (let y = 0; y < COMBAT_GRID_SIZE; y += 1) {
+      for (let x = 0; x < COMBAT_GRID_SIZE; x += 1) {
+        const distance = chebyshev(attacker.x, attacker.y, x, y);
+        if (distance <= 1 || distance > profile.range) {
+          continue;
+        }
+        tiles.push({ x, y });
+      }
+    }
+  }
+
+  return tiles;
 }
 
 function getAttackIndicatorStyle(profile) {
@@ -2643,7 +3123,7 @@ function getDirectionDelta(key) {
 
 function clearTargetingMode() {
   if (state.combat) {
-    state.combat.targeting = false;
+    state.combat.targeting = null;
   }
 }
 
@@ -2885,13 +3365,18 @@ function getFireballTargets(attacker) {
   return targets;
 }
 
-function useFireball(attacker) {
+function useFireball(attacker, targetX = null, targetY = null) {
   const options = getFireballTargets(attacker);
   if (options.length === 0) {
     return { ok: false, reason: "no-target" };
   }
 
-  const selected = options[0];
+  const selected = Number.isFinite(targetX) && Number.isFinite(targetY)
+    ? options.find((option) => option.x === targetX && option.y === targetY)
+    : options[0];
+  if (!selected) {
+    return { ok: false, reason: "invalid-target" };
+  }
   const profile = {
     id: "fireball",
     label: "fireball",
@@ -3010,11 +3495,10 @@ function resetBattleState() {
 function updateControls() {
   modeLabelEl.textContent = state.mode === "map" ? "Map" : "Combat";
   mapMpLabelEl.textContent = `${state.stacks.player.currentMapMp}/${state.stacks.player.maxMapMp}`;
-  if (combatLogPanelEl) {
-    combatLogPanelEl.style.display = state.mode === "combat" ? "block" : "none";
-  }
   renderBattleOverview();
+  renderCombatLog();
   renderEnemyTurnSummary();
+  updateBattleShell();
 
   const active = getActivePlayerUnit();
   if (combatMpLabelEl) {
@@ -3023,13 +3507,21 @@ function updateControls() {
       : `0/0`;
   }
 
-  const canAttack =
+  const actionableProfiles =
     state.mode === "combat" &&
     state.combatTurn === "player" &&
     !state.gameOver &&
     active &&
-    active.currentCombatMp > 0 &&
-    getAttackCandidates(active, "enemy").length > 0;
+    active.currentCombatMp > 0
+      ? getActionableAttackProfiles(active, "enemy")
+      : [];
+
+  const meleeAction = Array.isArray(actionableProfiles)
+    ? actionableProfiles.find((entry) => entry.profile.id === "melee")
+    : null;
+  const archeryAction = Array.isArray(actionableProfiles)
+    ? actionableProfiles.find((entry) => entry.profile.id === "archery")
+    : null;
 
   const canBravery =
     state.mode === "combat" &&
@@ -3048,10 +3540,33 @@ function updateControls() {
     hasAbility(active, "fireball") &&
     getFireballTargets(active).length > 0;
 
-  attackBtn.disabled = !canAttack;
-  if (braveryBtn) braveryBtn.disabled = !canBravery;
-  if (fireballBtn) fireballBtn.disabled = !canFireball;
-  endTurnBtn.disabled = state.gameOver;
+  const targeting = getCombatTargeting();
+
+  attackBtn.hidden = !meleeAction;
+  attackBtn.disabled = !meleeAction;
+  attackBtn.classList.toggle("is-active", targeting?.kind === "attack" && targeting.profile.id === "melee");
+
+  if (archeryBtn) {
+    archeryBtn.hidden = !archeryAction;
+    archeryBtn.disabled = !archeryAction;
+    archeryBtn.classList.toggle("is-active", targeting?.kind === "attack" && targeting.profile.id === "archery");
+  }
+
+  if (braveryBtn) {
+    braveryBtn.hidden = !canBravery;
+    braveryBtn.disabled = !canBravery;
+    braveryBtn.classList.toggle("is-active", false);
+  }
+
+  if (fireballBtn) {
+    fireballBtn.hidden = !canFireball;
+    fireballBtn.disabled = !canFireball;
+    fireballBtn.classList.toggle("is-active", targeting?.kind === "fireball");
+  }
+  endTurnBtn.disabled = state.gameOver || state.mode !== "combat" || state.combatTurn !== "player";
+  if (mapEndTurnBtn) {
+    mapEndTurnBtn.disabled = state.gameOver || state.mode !== "map";
+  }
 }
 
 function getDefendingSide(attacker) {
@@ -3061,12 +3576,13 @@ function getDefendingSide(attacker) {
 function startCombat(attacker) {
   hoveredEntity = null;
   setTooltipHtml("");
+  setBattleFeedTab("enemy");
   state.mode = "combat";
   state.combatTurn = getDefendingSide(attacker);
   state.combatTerrain = createCombatTerrain(COMBAT_GRID_SIZE);
   state.combat = {
     activePlayerUnitId: null,
-    targeting: false,
+    targeting: null,
     log: [],
     lastEnemyTurnEntries: []
   };
@@ -3316,56 +3832,34 @@ function playerFireball() {
     return;
   }
 
-  const result = useFireball(active);
-  if (!result.ok) {
+  const options = getFireballTargets(active);
+  if (options.length === 0) {
     statusEl.textContent = "Combat View: No valid Fireball target in range.";
     updateControls();
     return;
   }
 
-  clearTargetingMode();
-  for (const entry of result.logEntries) {
-    appendCombatLog(entry);
+  if (
+    state.combat?.targeting?.kind === "fireball" &&
+    state.combat.targeting.attackerId === active.id
+  ) {
+    clearTargetingMode();
+    statusEl.textContent = `Combat View: Fireball targeting canceled for ${unitName(active)}.`;
+    updateControls();
+    draw();
+    return;
   }
-  statusEl.textContent = `Combat View: Fireball detonated at (${result.target.x}, ${result.target.y}).`;
-  checkCombatEnd();
+
+  state.combat.targeting = {
+    kind: "fireball",
+    attackerId: active.id
+  };
+  statusEl.textContent = `Combat View: ${unitName(active)} is targeting Fireball. Click a highlighted tile to cast.`;
   updateControls();
   draw();
 }
 
-function handleDirectionalAttack(key) {
-  if (state.mode !== "combat" || !state.combat || !state.combat.targeting) {
-    return false;
-  }
-
-  const attacker = getActivePlayerUnit();
-  if (!attacker) {
-    clearTargetingMode();
-    return true;
-  }
-
-  const delta = getDirectionDelta(key);
-  if (!delta) return false;
-
-  const candidates = getAttackCandidates(attacker, "enemy").filter((candidate) => {
-    const dxToTarget = Math.sign(candidate.unit.x - attacker.x);
-    const dyToTarget = Math.sign(candidate.unit.y - attacker.y);
-    return dxToTarget === delta.dx && dyToTarget === delta.dy;
-  });
-  const target = candidates[0];
-
-  if (!target) {
-    statusEl.textContent = `Combat View: No enemy in that direction from ${unitName(attacker)}. Choose another direction or press Space to cancel targeting.`;
-    updateControls();
-    draw();
-    return true;
-  }
-
-  performPlayerAttack(attacker, target.unit, target.profile);
-  return true;
-}
-
-function playerCombatAttack() {
+function beginAttackTargeting(profileId) {
   if (state.mode !== "combat" || state.combatTurn !== "player" || state.gameOver) {
     return;
   }
@@ -3375,36 +3869,42 @@ function playerCombatAttack() {
     return;
   }
 
-  if (active.currentCombatMp <= 0) {
-    statusEl.textContent = `Combat View: ${unitName(active)} has no MP left to attack.`;
-    updateControls();
-    return;
-  }
-
-  if (state.combat && state.combat.targeting) {
-    clearTargetingMode();
-    statusEl.textContent = `Combat View: Targeting canceled for ${unitName(active)}.`;
+  const attackEntry = getActionableAttackProfiles(active, "enemy").find((entry) => entry.profile.id === profileId);
+  if (!attackEntry) {
+    statusEl.textContent = `Combat View: ${getAttackButtonLabel(profileId)} is not available for ${unitName(active)}.`;
     updateControls();
     draw();
     return;
   }
 
-  const targets = getAttackCandidates(active, "enemy");
-  if (targets.length === 0) {
-    statusEl.textContent = "Combat View: No valid melee or archery target in range.";
+  if (
+    state.combat?.targeting?.kind === "attack" &&
+    state.combat.targeting.attackerId === active.id &&
+    state.combat.targeting.profileId === profileId
+  ) {
+    clearTargetingMode();
+    statusEl.textContent = `Combat View: ${getAttackButtonLabel(profileId)} targeting canceled for ${unitName(active)}.`;
     updateControls();
+    draw();
     return;
   }
 
-  if (targets.length === 1) {
-    performPlayerAttack(active, targets[0].unit, targets[0].profile);
-    return;
-  }
-
-  state.combat.targeting = true;
-  statusEl.textContent = `Combat View: ${unitName(active)} has multiple attack targets. Press arrow key toward target to attack.`;
+  state.combat.targeting = {
+    kind: "attack",
+    attackerId: active.id,
+    profileId
+  };
+  statusEl.textContent = `Combat View: ${unitName(active)} is targeting ${getAttackButtonLabel(profileId)}. Click a highlighted enemy.`;
   updateControls();
   draw();
+}
+
+function playerCombatAttack() {
+  beginAttackTargeting("melee");
+}
+
+function playerArcheryAttack() {
+  beginAttackTargeting("archery");
 }
 
 function enemyCombatTurn() {
@@ -3590,6 +4090,72 @@ function drawCombatGrid() {
   }
 }
 
+function drawCombatTargetingOverlay() {
+  const targeting = getCombatTargeting();
+  if (!targeting) {
+    return;
+  }
+
+  ctx.save();
+
+  if (targeting.kind === "attack") {
+    const indicator = getAttackIndicatorStyle(targeting.profile);
+    const tiles = getTilesForAttackProfile(targeting.attacker, targeting.profile);
+    ctx.fillStyle = isRangedProfile(targeting.profile)
+      ? "rgba(111, 211, 255, 0.16)"
+      : "rgba(255, 211, 77, 0.18)";
+
+    for (const tile of tiles) {
+      ctx.fillRect(
+        tile.x * COMBAT_TILE_SIZE + 3,
+        tile.y * COMBAT_TILE_SIZE + 3,
+        COMBAT_TILE_SIZE - 6,
+        COMBAT_TILE_SIZE - 6
+      );
+    }
+
+    for (const candidate of targeting.candidates) {
+      const cx = candidate.unit.x * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+      const cy = candidate.unit.y * COMBAT_TILE_SIZE + COMBAT_TILE_SIZE / 2;
+      drawCombatRingStyled(cx, cy, {
+        stroke: indicator.color,
+        width: 3,
+        radius: COMBAT_TILE_SIZE * indicator.radiusScale,
+        dash: indicator.dash
+      });
+    }
+  }
+
+  if (targeting.kind === "fireball") {
+    ctx.fillStyle = "rgba(255, 136, 84, 0.18)";
+    for (const option of targeting.options) {
+      ctx.fillRect(
+        option.x * COMBAT_TILE_SIZE + 7,
+        option.y * COMBAT_TILE_SIZE + 7,
+        COMBAT_TILE_SIZE - 14,
+        COMBAT_TILE_SIZE - 14
+      );
+    }
+
+    const hoverTile = hoveredEntity?.type === "combatUnit"
+      ? { x: getUnitById(hoveredEntity.side, hoveredEntity.unitId)?.x, y: getUnitById(hoveredEntity.side, hoveredEntity.unitId)?.y }
+      : getCombatTileFromCanvasPoint({ x: hoverClientX == null ? NaN : ((hoverClientX - board.getBoundingClientRect().left) / board.getBoundingClientRect().width) * board.width, y: hoverClientY == null ? NaN : ((hoverClientY - board.getBoundingClientRect().top) / board.getBoundingClientRect().height) * board.height });
+    const selectedOption = targeting.options.find((option) => option.x === hoverTile?.x && option.y === hoverTile?.y);
+    const previewArea = selectedOption ? getFireballArea(selectedOption.x, selectedOption.y) : [];
+    ctx.fillStyle = "rgba(255, 102, 51, 0.22)";
+    for (const tile of previewArea) {
+      ctx.fillRect(
+        tile.x * COMBAT_TILE_SIZE + 3,
+        tile.y * COMBAT_TILE_SIZE + 3,
+        COMBAT_TILE_SIZE - 6,
+        COMBAT_TILE_SIZE - 6
+      );
+    }
+  }
+
+  ctx.restore();
+}
+
 function drawStackToken(side, stack) {
   const count = getStackCount(side);
   if (count <= 0) return;
@@ -3605,7 +4171,19 @@ function drawStackToken(side, stack) {
   ctx.save();
   ctx.clip();
 
-  if (race?.artKey) {
+  if (race?.artKey === "centaur-archer") {
+    const strongestUnit = getStrongestStackUnit(side);
+    const art = createArtCanvas(MAP_ART_SIZE, MAP_ART_SIZE);
+    const artCtx = art.getContext("2d");
+    drawCentaurTokenArt(artCtx, art.width, strongestUnit, side);
+    ctx.drawImage(art, cx - radius, cy - radius, radius * 2, radius * 2);
+  } else if (race?.artKey === "demon-horde") {
+    const strongestUnit = getStrongestStackUnit(side);
+    const art = createArtCanvas(MAP_ART_SIZE, MAP_ART_SIZE);
+    const artCtx = art.getContext("2d");
+    drawDemonTokenArt(artCtx, art.width, strongestUnit, side);
+    ctx.drawImage(art, cx - radius, cy - radius, radius * 2, radius * 2);
+  } else if (race?.artKey) {
     const art = getRaceArtCanvas(race, "map");
     ctx.drawImage(art, cx - radius, cy - radius, radius * 2, radius * 2);
   } else {
@@ -3646,8 +4224,9 @@ function drawStackToken(side, stack) {
 function drawCombatUnits() {
   const active = getActivePlayerUnit();
   const targetableIndicators = new Map();
-  if (state.combat?.targeting && active) {
-    for (const candidate of getAttackCandidates(active, "enemy")) {
+  const targeting = getCombatTargeting();
+  if (targeting?.kind === "attack" && active) {
+    for (const candidate of targeting.candidates) {
       if (!targetableIndicators.has(candidate.unit.id)) {
         targetableIndicators.set(candidate.unit.id, getAttackIndicatorStyle(candidate.profile));
       }
@@ -3723,12 +4302,8 @@ function drawMapView() {
 
 function drawCombatView() {
   drawCombatGrid();
+  drawCombatTargetingOverlay();
   drawCombatUnits();
-
-  ctx.fillStyle = "#1f2a1f";
-  ctx.font = "bold 18px sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillText(`${state.stacks.player.race}: ${getStackCount("player")} | ${state.stacks.enemy.race}: ${getStackCount("enemy")}`, board.width / 2, 26);
 }
 
 function getCanvasPointFromEvent(event) {
@@ -3737,6 +4312,16 @@ function getCanvasPointFromEvent(event) {
   const x = ((event.clientX - rect.left) / rect.width) * board.width;
   const y = ((event.clientY - rect.top) / rect.height) * board.height;
   return { x, y, clientX: event.clientX, clientY: event.clientY };
+}
+
+function getCombatTileFromCanvasPoint(point) {
+  if (!point) return null;
+  const x = Math.floor(point.x / COMBAT_TILE_SIZE);
+  const y = Math.floor(point.y / COMBAT_TILE_SIZE);
+  if (!inBounds(x, y, COMBAT_GRID_SIZE)) {
+    return null;
+  }
+  return { x, y };
 }
 
 function getMapHoverEntity(px, py) {
@@ -3820,6 +4405,68 @@ function clearHoveredEntity() {
   draw();
 }
 
+function handleCombatBoardClick(event) {
+  if (!gameStarted || state.mode !== "combat") {
+    return;
+  }
+
+  const point = getCanvasPointFromEvent(event);
+  if (!point) return;
+
+  const tile = getCombatTileFromCanvasPoint(point);
+  const clickedUnit = tile ? getCombatUnitAt(tile.x, tile.y) : null;
+  if (clickedUnit?.side === "player") {
+    selectActivePlayerUnit(clickedUnit.unit.id);
+    return;
+  }
+
+  if (state.combatTurn !== "player" || state.gameOver) {
+    return;
+  }
+
+  const targeting = getCombatTargeting();
+  if (!targeting) {
+    return;
+  }
+
+  if (targeting.kind === "attack") {
+    const target = targeting.candidates.find((entry) => entry.unit.id === clickedUnit?.unit?.id);
+    if (!target) {
+      statusEl.textContent = `Combat View: ${unitName(targeting.attacker)} is targeting ${getAttackButtonLabel(targeting.profile.id)}. Click a highlighted enemy.`;
+      updateControls();
+      draw();
+      return;
+    }
+    performPlayerAttack(targeting.attacker, target.unit, target.profile);
+    return;
+  }
+
+  if (targeting.kind === "fireball") {
+    const target = targeting.options.find((option) => option.x === tile?.x && option.y === tile?.y);
+    if (!target) {
+      statusEl.textContent = `Combat View: ${unitName(targeting.attacker)} is targeting Fireball. Click a highlighted tile to cast.`;
+      updateControls();
+      draw();
+      return;
+    }
+    const result = useFireball(targeting.attacker, target.x, target.y);
+    if (!result.ok) {
+      statusEl.textContent = "Combat View: No valid Fireball target in range.";
+      updateControls();
+      draw();
+      return;
+    }
+    clearTargetingMode();
+    for (const entry of result.logEntries) {
+      appendCombatLog(entry);
+    }
+    statusEl.textContent = `Combat View: Fireball detonated at (${result.target.x}, ${result.target.y}).`;
+    checkCombatEnd();
+    updateControls();
+    draw();
+  }
+}
+
 function draw() {
   ctx.clearRect(0, 0, board.width, board.height);
   if (!gameStarted) {
@@ -3843,6 +4490,7 @@ function renderGameToText() {
   }
 
   const active = getActivePlayerUnit();
+  const targeting = getCombatTargeting();
   const targetableEnemies = state.mode === "combat" && active
     ? getAttackCandidates(active, "enemy").map((candidate) => ({
         id: candidate.unit.id,
@@ -3932,7 +4580,21 @@ function renderGameToText() {
     },
     activePlayerUnitId: active ? active.id : null,
     activePlayerUnitLabel: active ? unitName(active) : null,
-    targetingMode: Boolean(state.combat?.targeting),
+    targetingMode: Boolean(targeting),
+    targeting: targeting
+      ? targeting.kind === "attack"
+        ? {
+            kind: targeting.kind,
+            attackerId: targeting.attacker.id,
+            profileId: targeting.profile.id,
+            candidateUnitIds: targeting.candidates.map((entry) => entry.unit.id)
+          }
+        : {
+            kind: targeting.kind,
+            attackerId: targeting.attacker.id,
+            targetTiles: targeting.options.map((option) => ({ x: option.x, y: option.y }))
+          }
+      : null,
     combatLog: state.combat?.log || [],
     combatRules: {
       baseHitChance: BASE_HIT_CHANCE,
@@ -4029,6 +4691,7 @@ function resetGame() {
   pendingActions.length = 0;
   hoveredEntity = null;
   setTooltipHtml("");
+  setBattleFeedTab("enemy");
   clearCombatLog();
   state = initialState();
   updateRaceLabels();
@@ -4049,7 +4712,14 @@ document.addEventListener("keydown", (event) => {
 
   if (event.code === "Space") {
     event.preventDefault();
-    playerCombatAttack();
+    if (state.mode === "combat" && state.combat?.targeting) {
+      clearTargetingMode();
+      statusEl.textContent = "Combat View: Targeting canceled.";
+      updateControls();
+      draw();
+    } else {
+      playerCombatAttack();
+    }
     return;
   }
 
@@ -4073,10 +4743,12 @@ document.addEventListener("keydown", (event) => {
     return;
   }
 
-  if (state.mode === "combat" && state.combatTurn === "player" && state.combat?.targeting) {
-    if (handleDirectionalAttack(event.key)) {
-      return;
-    }
+  if (event.code === "Escape" && state.mode === "combat" && state.combat?.targeting) {
+    clearTargetingMode();
+    statusEl.textContent = "Combat View: Targeting canceled.";
+    updateControls();
+    draw();
+    return;
   }
 
   if (state.mode === "map") {
@@ -4087,16 +4759,26 @@ document.addEventListener("keydown", (event) => {
 });
 
 attackBtn.addEventListener("click", playerCombatAttack);
+if (archeryBtn) archeryBtn.addEventListener("click", playerArcheryAttack);
 if (braveryBtn) braveryBtn.addEventListener("click", playerCallOfBravery);
 if (fireballBtn) fireballBtn.addEventListener("click", playerFireball);
 endTurnBtn.addEventListener("click", endTurn);
+if (mapEndTurnBtn) mapEndTurnBtn.addEventListener("click", endTurn);
 resetBtn.addEventListener("click", resetGame);
+if (mapResetBtn) mapResetBtn.addEventListener("click", resetGame);
+for (const button of battleFeedTabButtons) {
+  button.addEventListener("click", () => {
+    setBattleFeedTab(button.dataset.feedTab);
+  });
+}
 playerRaceSelectEl.addEventListener("change", updateSetupRacePreviews);
 enemyRaceSelectEl.addEventListener("change", updateSetupRacePreviews);
 startGameBtnEl.addEventListener("click", startGameFromSetup);
 board.addEventListener("mousemove", updateHoveredEntity);
+board.addEventListener("click", handleCombatBoardClick);
 board.addEventListener("mouseleave", clearHoveredEntity);
 
 initializeSetupScreen();
+setBattleFeedTab("enemy");
 setGamePanelsVisible(false);
 draw();

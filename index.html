@@ -7,7 +7,7 @@
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <main class="app">
+  <main id="appRoot" class="app">
     <section id="setupScreen" class="setup-screen">
       <h2>Choose Races</h2>
       <label for="playerRaceSelect">Player Race</label>
@@ -27,36 +27,69 @@
       <button id="startGameBtn">Start Game</button>
     </section>
     <section id="hudPanel" class="hud hidden-until-start">
-      <h1>4X Prototype: Turn-Based Skirmish</h1>
-      <div class="meta">
-        <p><strong>Race A:</strong> <span id="raceALabel">-</span></p>
-        <p><strong>Race B:</strong> <span id="raceBLabel">-</span></p>
-      </div>
-      <p><strong>View:</strong> <span id="modeLabel">Map</span></p>
-      <p><strong>Map MP:</strong> <span id="mapMpLabel">3/3</span></p>
-      <p><strong>Combat MP:</strong> <span id="combatMpLabel">2/2</span></p>
-      <p id="status">Map View: Use arrow keys to move your stack. Overlap the enemy to trigger combat.</p>
-      <button id="attackBtn">Attack</button>
-      <button id="braveryBtn">Bravery</button>
-      <button id="fireballBtn">Fireball</button>
-      <button id="endTurnBtn">End Turn</button>
-      <button id="resetBtn">Reset</button>
-      <p class="hint">Controls: `Space` attack, `C` bravery, `G` fireball, `A` cycle unit, `Enter` end turn. Hover a unit for quick stats; see details below.</p>
-      <section class="battle-overview-panel" aria-live="polite">
-        <h3>Battle Overview</h3>
-        <div id="battleOverview" class="battle-overview-empty">Enter combat to see each unit's health and armor.</div>
+      <section id="mapHud" class="map-hud" aria-live="polite">
+        <h1>4X Prototype: Turn-Based Skirmish</h1>
+        <div class="meta">
+          <p><strong>Race A:</strong> <span id="raceALabel">-</span></p>
+          <p><strong>Race B:</strong> <span id="raceBLabel">-</span></p>
+        </div>
+        <p><strong>View:</strong> <span id="modeLabel">Map</span></p>
+        <p><strong>Map MP:</strong> <span id="mapMpLabel">3/3</span></p>
+        <p><strong>Combat MP:</strong> <span id="combatMpLabel">2/2</span></p>
+        <p id="status">Map View: Use arrow keys to move your stack. Overlap the enemy to trigger combat.</p>
+        <div class="map-hud-actions">
+          <button id="mapEndTurnBtn">End Turn</button>
+          <button id="mapResetBtn">Reset</button>
+        </div>
+        <p class="hint">Controls: `Space` attack, `C` bravery, `G` fireball, `A` cycle unit, `Enter` end turn. Hover a unit for quick stats; detailed battle info moves into the command rail.</p>
       </section>
-      <section class="enemy-turn-panel" aria-live="polite">
-        <h3>Last Enemy Turn</h3>
-        <div id="enemyTurnSummary" class="enemy-turn-empty">The enemy recap will appear here after its combat turn.</div>
-      </section>
-      <section class="unit-inspector-panel" aria-live="polite">
-        <h3>Unit Details</h3>
-        <div id="unitInspector" class="unit-inspector-empty">Hover a stack or unit to inspect it.</div>
-      </section>
-      <section class="combat-log-panel">
-        <h3>Combat Log</h3>
-        <ul id="combatLog" class="combat-log-list"></ul>
+      <section id="battleHud" class="battle-rail" aria-live="polite">
+        <section class="battle-rail-panel battle-actions-panel">
+          <div class="battle-panel-heading">
+            <span class="battle-panel-kicker">Combat Actions</span>
+            <h3>Unit Commands</h3>
+          </div>
+          <div class="battle-rail-actions">
+            <button id="attackBtn" class="action-btn action-btn-primary">Attack</button>
+            <button id="archeryBtn" class="action-btn">Archery</button>
+            <button id="braveryBtn" class="action-btn">Bravery</button>
+            <button id="fireballBtn" class="action-btn">Fireball</button>
+            <button id="endTurnBtn" class="action-btn action-btn-primary">End Turn</button>
+            <button id="resetBtn" class="action-btn action-btn-quiet">Reset</button>
+          </div>
+        </section>
+        <section class="battle-rail-panel battle-army-panel">
+          <div class="battle-panel-heading">
+            <span class="battle-panel-kicker">Army Strip</span>
+            <h3>Battle Lines</h3>
+          </div>
+          <div id="battleArmyStrip" class="battle-overview-empty">Enter combat to see each unit's health and armor.</div>
+        </section>
+        <section class="battle-rail-panel battle-focus-panel">
+          <div class="battle-panel-heading">
+            <span class="battle-panel-kicker">Focus Panel</span>
+            <h3>Unit Details</h3>
+          </div>
+          <div id="unitInspector" class="unit-inspector-empty">Hover a stack or unit to inspect it.</div>
+        </section>
+        <section class="battle-rail-panel battle-feed-panel">
+          <div class="battle-feed-header">
+            <div class="battle-panel-heading">
+              <span class="battle-panel-kicker">Event Feed</span>
+              <h3>Battle Feed</h3>
+            </div>
+            <div id="battleFeedTabs" class="battle-feed-tabs" role="tablist" aria-label="Battle feed tabs">
+              <button type="button" class="battle-feed-tab is-active" data-feed-tab="enemy" role="tab" aria-selected="true">Enemy Turn</button>
+              <button type="button" class="battle-feed-tab" data-feed-tab="log" role="tab" aria-selected="false">Combat Log</button>
+            </div>
+          </div>
+          <div id="enemyTurnPane" class="battle-feed-pane is-active" role="tabpanel">
+            <div id="enemyTurnSummary" class="enemy-turn-empty">The enemy recap will appear here after its combat turn.</div>
+          </div>
+          <div id="combatLogPane" class="battle-feed-pane" role="tabpanel" hidden>
+            <ul id="combatLog" class="combat-log-list"></ul>
+          </div>
+        </section>
       </section>
     </section>
     <section id="boardWrap" class="board-wrap hidden-until-start">

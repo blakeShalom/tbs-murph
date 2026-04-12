@@ -180,6 +180,25 @@ TODO / follow-ups:
 - Current `tests/` cover modular `src/` runtime, not the active `game.js` entrypoint; add tests around stat formulas and tooltip payloads if `game.js` remains the source of truth.
 - Consider truncating map stack tooltip lines for very large stacks on smaller screens.
 - Post-tweak verification: reran `output/web-game/stats-combat-tooltip-2/` via skill client and reran `npm test` (33 passing) after unit-name clarity update.
+
+- UI review pass on branch `codex-tooltip-ui-review` for tooltip noise reduction.
+  - Current hover card in `game.js` still inlines full stat strings, loadout text, long-form abilities, status text, and situational hit-chance copy directly over the board.
+  - Recommendation for next implementation pass: split inspection into a compact on-canvas hover chip plus a quieter pinned side-panel detail card so the board stays readable during movement/targeting.
+  - Suggested information hierarchy:
+    - Hover chip: name/class, HP/ARM, MOV, and one status/ability badge row.
+    - Side detail card: expanded abilities, loadout, terrain/matchup notes, and contextual hit chance only when targeting.
+  - Also consider moving controls help out of the always-visible HUD hint so the board + inspector stack has more breathing room.
+
+- Implemented the quieter inspection UI on `codex-tooltip-ui-review`.
+  - Added a pinned `Unit Details` panel in the HUD and reduced the floating board tooltip to a compact chip.
+  - Hover state now feeds two presentation levels:
+    - compact chip near the cursor for quick vitals + badges
+    - persistent inspector card for full stats, loadout, abilities, statuses, and contextual enemy hit chance
+  - Default inspector state now shows the player stack on map view and the selected player unit during combat, so details remain available even without hover.
+  - Shortened the persistent controls hint copy to reduce left-rail text density.
+  - Validation:
+    - `npm test` passing (63/63).
+    - Attempted Playwright screenshot validation, but Chromium launch failed under the current sandbox (`bootstrap_check_in ... Permission denied (1100)`), so no fresh UI screenshot artifact was produced in this pass.
 - Added combat-stat unit test coverage with new pure helper module:
   - New module: `src/systems/combatStats.js`
   - New tests: `tests/combat_stats.test.js`
@@ -199,6 +218,36 @@ TODO / follow-ups:
 Validation:
 - Unit tests: `npm test` passing (44 tests).
 - Skill Playwright client run: `output/web-game/combat-log-smoke/` with no `errors-0.json`.
+
+- Implemented the battle-only command shell for combat UI in `index.html`, `styles.css`, and `game.js`.
+  - Added a dedicated combat header with primary battle actions and a separate map HUD block.
+  - Replaced the old stacked right sidebar with a battle rail composed of:
+    - `Battle Lines` army strip
+    - persistent `Unit Details` focus panel
+    - tabbed `Battle Feed` with `Enemy Turn` and `Combat Log`
+  - Added a compact battle status banner above the board and removed redundant canvas-top battle text.
+  - Kept hover chips compact and added projected attack chance badges for hovered enemy targets.
+  - Rewired combat log rendering to newest-first and constrained feed scrolling to the panel rather than the entire sidebar.
+- Validation for battle command view refresh:
+  - Unit tests: `npm test` passing (63/63).
+  - Next: run Playwright/browser capture against the current battle screen and inspect desktop/mobile composition for rail height and readability.
+
+- Extended combat interaction model in `game.js` and battle header markup.
+  - Added click-to-select for player combat units on the board.
+  - Added a dedicated `Archery` top pill so ranged basic attacks are treated as an explicit action, not just hidden inside generic attack resolution.
+  - Replaced boolean combat targeting with structured targeting state for:
+    - attack profile selection
+    - fireball tile selection
+  - Player combat targeting now works through mouse clicks:
+    - click a player unit to select it
+    - click `Attack`, `Archery`, or `Fireball`
+    - click a highlighted enemy or tile to confirm
+  - Top battle pills now only appear when the selected unit can actually use them in the current state.
+  - Added generic combat targeting overlays so melee and ranged attacks show valid reach/targets on the board.
+- Validation for click-targeting pass:
+  - Unit tests: `npm test` passing (68/68).
+  - Added UI contract coverage in `tests/ui_regressions.test.js` for `Archery` pill presence and board click wiring.
+  - Playwright capture: `output/combat-click-targeting.png`
 - Focused full-page Playwright check for combat log + both-turn entries:
   - `output/web-game/combat-log-dom/full.png`
   - `output/web-game/combat-log-dom/state.json`
